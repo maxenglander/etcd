@@ -3077,10 +3077,21 @@ func TestNewLeaderPendingConfig(t *testing.T) {
 func TestAddNode(t *testing.T) {
 	r := newTestRaft(1, []uint64{1}, 10, 1, NewMemoryStorage())
 	r.addNode(2)
-	nodes := r.prs.VoterNodes()
-	wnodes := []uint64{1, 2}
-	if !reflect.DeepEqual(nodes, wnodes) {
-		t.Errorf("nodes = %v, want %v", nodes, wnodes)
+	vnodes := r.prs.VoterNodes()
+	lnodes := r.prs.LearnerNodes()
+	wvnodes := []uint64{1}
+	wlnodes := []uint64{2}
+	if !reflect.DeepEqual(vnodes, wvnodes) {
+		t.Errorf("voter nodes = %v, want %v", vnodes, wvnodes)
+	}
+	if !reflect.DeepEqual(lnodes, wlnodes) {
+		t.Errorf("voter nodes = %v, want %v", lnodes, wlnodes)
+	}
+	if !r.prs.Progress[2].IsLearner {
+		t.Errorf("node 2 is learner %t, want %t", r.prs.Progress[2].IsLearner, true)
+	}
+	if !r.prs.Progress[2].AutoPromote {
+		t.Errorf("node 2 is auto-promote %t, want %t", r.prs.Progress[2].AutoPromote, true)
 	}
 }
 
