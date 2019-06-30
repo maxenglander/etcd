@@ -1142,7 +1142,7 @@ func TestCommit(t *testing.T) {
 		sm := newTestRaft(1, []uint64{1}, 10, 2, storage)
 		sm.prs.RemoveAny(1)
 		for j := 0; j < len(tt.matches); j++ {
-			sm.prs.InitProgress(uint64(j)+1, tt.matches[j], tt.matches[j]+1, false)
+			sm.prs.InitProgress(uint64(j)+1, tt.matches[j], tt.matches[j]+1, false /* isLearner */, false /* autoPromote */)
 		}
 		sm.maybeCommit()
 		if g := sm.raftLog.committed; g != tt.w {

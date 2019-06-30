@@ -272,6 +272,7 @@ func (*HardState) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []in
 type ConfState struct {
 	Nodes            []uint64 `protobuf:"varint,1,rep,name=nodes" json:"nodes,omitempty"`
 	Learners         []uint64 `protobuf:"varint,2,rep,name=learners" json:"learners,omitempty"`
+	LearningNodes    []uint64 `protobuf:"varint,3,rep,name="learning_nodes" json:"learning_nodes,omitempty"`
 	XXX_unrecognized []byte   `json:"-"`
 }
 

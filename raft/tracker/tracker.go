@@ -101,7 +101,7 @@ func (p *ProgressTracker) RemoveAny(id uint64) {
 
 // InitProgress initializes a new progress for the given node or learner. The
 // node may not exist yet in either form or a panic will ensue.
-func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool) {
+func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool, autoPromote bool) {
 	if pr := p.Progress[id]; pr != nil {
 		panic(fmt.Sprintf("peer %x already tracked as node %v", id, pr))
 	}
@@ -110,7 +110,13 @@ func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool) {
 	} else {
 		p.Learners[id] = struct{}{}
 	}
-	p.Progress[id] = &Progress{Next: next, Match: match, Inflights: NewInflights(p.MaxInflight), IsLearner: isLearner}
+	p.Progress[id] = &Progress{
+		Next:        next,
+		Match:       match,
+		Inflights:   NewInflights(p.MaxInflight),
+		IsLearner:   isLearner,
+		AutoPromote: autoPromote,
+	}
 }
 
 // Visit invokes the supplied closure for all tracked progresses.

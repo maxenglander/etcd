@@ -361,7 +361,8 @@ func (n *node) run(r *raft) {
 				select {
 				case n.confstatec <- pb.ConfState{
 					Nodes:    r.prs.VoterNodes(),
-					Learners: r.prs.LearnerNodes()}:
+					Learners: r.prs.LearnerNodes(),
+				}:
 				case <-n.done:
 				}
 				break

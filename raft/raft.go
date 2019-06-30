@@ -269,6 +269,11 @@ type raft struct {
 	// isLearner is true if the local raft node is a learner.
 	isLearner bool
 
+	// autoPromote is true if the local raft node is a learner
+	// that should be automatically promoted to a voter once
+	// caught up with the leader.
+	autoPromote bool
+
 	msgs []pb.Message
 
 	// the leader id
@@ -356,11 +361,11 @@ func newRaft(c *Config) *raft {
 	}
 	for _, p := range peers {
 		// Add node to active config.
-		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, false /* isLearner */)
+		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, false /* isLearner */, false /* autoPromote */)
 	}
 	for _, p := range learners {
 		// Add learner to active config.
-		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, true /* isLearner */)
+		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, true /* isLearner */, false /* autoPromote */)
 
 		if r.id == p {
 			r.isLearner = true
@@ -1349,19 +1354,21 @@ func (r *raft) restore(s pb.Snapshot) bool {
 
 	r.raftLog.restore(s)
 	r.prs = tracker.MakeProgressTracker(r.prs.MaxInflight)
-	r.restoreNode(s.Metadata.ConfState.Nodes, false)
-	r.restoreNode(s.Metadata.ConfState.Learners, true)
+	r.restoreNode(s.Metadata.ConfState.Nodes, false, false)
+	r.restoreNode(s.Metadata.ConfState.Learners, true, false)
+	r.restoreNode(s.Metadata.ConfState.LearningNodes, true, true)
 	return true
 }
 
-func (r *raft) restoreNode(nodes []uint64, isLearner bool) {
+func (r *raft) restoreNode(nodes []uint64, isLearner bool, autoPromote bool) {
 	for _, n := range nodes {
 		match, next := uint64(0), r.raftLog.lastIndex()+1
 		if n == r.id {
 			match = next - 1
 			r.isLearner = isLearner
+			r.autoPromote = autoPromote
 		}
-		r.prs.InitProgress(n, match, next, isLearner)
+		r.prs.InitProgress(n, match, next, isLearner, autoPromote)
 		r.logger.Infof("%x restored progress of %x [%s]", r.id, n, r.prs.Progress[n])
 	}
 }
@@ -1383,8 +1390,13 @@ func (r *raft) addLearner(id uint64) {
 
 func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool) {
 	pr := r.prs.Progress[id]
+	autoPromote := false
 	if pr == nil {
-		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, isLearner)
+		// All newly added members are added as learners. Newly added nodes
+		// are configured to autoPromote. When learners set to autoPromote
+		// are caught up with the leader, they are auto-promoted to nodes.
+		autoPromote = !isLearner
+		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, true /* isLearner */, autoPromote)
 	} else {
 		if isLearner && !pr.IsLearner {
 			// Can only change Learner to Voter.
@@ -1400,13 +1412,16 @@ func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool) {
 
 		// Change Learner to Voter, use origin Learner progress.
 		r.prs.RemoveAny(id)
-		r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */)
+		r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */, false /* autoPromote */)
 		pr.IsLearner = false
+		autoPromote = false
+		pr.AutoPromote = autoPromote
 		*r.prs.Progress[id] = *pr
 	}
 
 	if r.id == id {
 		r.isLearner = isLearner
+		r.autoPromote = autoPromote
 	}
 
 	// When a node is first added, we should mark it as recently active.
