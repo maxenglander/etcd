@@ -3122,6 +3122,9 @@ func TestAddNodeCheckQuorum(t *testing.T) {
 		r.tick()
 	}
 
+	// Node 2 is initially added as an auto-promoting learner
+	r.addNode(2)
+	// Force promote node 2 to voter
 	r.addNode(2)
 
 	// This tick will reach electionTimeout, which triggers a quorum check.
