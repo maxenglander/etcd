@@ -627,6 +627,7 @@ func (r *raft) tickElection() {
 
 	if r.promotable() && r.pastElectionTimeout() {
 		r.electionElapsed = 0
+		r.logger.Infof("sending MsgHup from %x", r.id)
 		r.Step(pb.Message{From: r.id, Type: pb.MsgHup})
 	}
 }
@@ -1377,6 +1378,11 @@ func (r *raft) restoreNode(nodes []uint64, isLearner bool, autoPromote bool) {
 // which is true when its own id is in progress list.
 func (r *raft) promotable() bool {
 	pr := r.prs.Progress[r.id]
+	if pr == nil {
+		r.logger.Warningf("%x is not promotable because its id is not in the progress list", r.id)
+	} else if pr.IsLearner {
+		r.logger.Warningf("%x is not promotable because it is a learner", r.id)
+	}
 	return pr != nil && !pr.IsLearner
 }
 
@@ -1390,13 +1396,19 @@ func (r *raft) addLearner(id uint64) {
 
 func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool) {
 	pr := r.prs.Progress[id]
+	_isLearner := isLearner
 	autoPromote := false
+
 	if pr == nil {
-		// All newly added members are added as learners. Newly added nodes
-		// are configured to autoPromote. When learners set to autoPromote
-		// are caught up with the leader, they are auto-promoted to nodes.
-		autoPromote = !isLearner
-		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, true /* isLearner */, autoPromote)
+		emptyCluster := len(r.prs.Voters[0]) == 0 && len(r.prs.Learners) == 0
+
+		// New cluster members are added to non-empty clusters as learners,
+		// until they are caught up with the leader, at which point they are
+		// automatically promoted to voters.
+		_isLearner = isLearner || !emptyCluster
+
+		autoPromote = !(emptyCluster || isLearner)
+		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, _isLearner, autoPromote)
 	} else {
 		if isLearner && !pr.IsLearner {
 			// Can only change Learner to Voter.

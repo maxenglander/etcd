@@ -573,6 +573,7 @@ func TestReadyContainUpdates(t *testing.T) {
 // start with correct configuration change entries, and can accept and commit
 // proposals.
 func TestNodeStart(t *testing.T) {
+	fmt.Println("starting TestNodeStart")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -610,6 +611,7 @@ func TestNodeStart(t *testing.T) {
 	}
 	n := StartNode(c, []Peer{{ID: 1}})
 	defer n.Stop()
+	fmt.Println("waiting for node ready state")
 	g := <-n.Ready()
 	if !reflect.DeepEqual(g, wants[0]) {
 		t.Fatalf("#%d: g = %+v,\n             w   %+v", 1, g, wants[0])
@@ -618,6 +620,7 @@ func TestNodeStart(t *testing.T) {
 		n.Advance()
 	}
 
+	fmt.Println("starting campaign")
 	n.Campaign(ctx)
 	rd := <-n.Ready()
 	storage.Append(rd.Entries)
