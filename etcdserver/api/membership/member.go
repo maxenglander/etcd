@@ -37,6 +37,9 @@ type RaftAttributes struct {
 	PeerURLs []string `json:"peerURLs"`
 	// IsLearner indicates if the member is raft learner.
 	IsLearner bool `json:"isLearner,omitempty"`
+	// AutoPromote indicates whether the learner should be
+	// promoted to a voter upon catching up with leader.
+	AutoPromote bool `json:"autoPromote,omitempty"`
 }
 
 // Attributes represents all the non-raft related attributes of an etcd member.
@@ -53,21 +56,25 @@ type Member struct {
 
 // NewMember creates a Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
+// A new member is added to a cluster as a learner, and is automatically
+// promoted to a voter upon catching up with the leader.
 func NewMember(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, false)
+	return newMember(name, peerURLs, clusterName, now, true /* autoPromote */)
 }
 
 // NewMemberAsLearner creates a learner Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for adding new learner member.
+// Learners are not automatically promoted to voters.
 func NewMemberAsLearner(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, true)
+	return newMember(name, peerURLs, clusterName, now, false /* autoPromote */)
 }
 
-func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, isLearner bool) *Member {
+func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, autoPromote bool) *Member {
 	m := &Member{
 		RaftAttributes: RaftAttributes{
-			PeerURLs:  peerURLs.StringSlice(),
-			IsLearner: isLearner,
+			PeerURLs:    peerURLs.StringSlice(),
+			IsLearner:   true,
+			AutoPromote: autoPromote,
 		},
 		Attributes: Attributes{Name: name},
 	}
@@ -104,7 +111,8 @@ func (m *Member) Clone() *Member {
 	mm := &Member{
 		ID: m.ID,
 		RaftAttributes: RaftAttributes{
-			IsLearner: m.IsLearner,
+			IsLearner:   m.IsLearner,
+			AutoPromote: m.AutoPromote,
 		},
 		Attributes: Attributes{
 			Name: m.Name,

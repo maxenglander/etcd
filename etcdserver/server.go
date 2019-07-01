@@ -1584,6 +1584,9 @@ func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*
 
 	if memb.IsLearner {
 		cc.Type = raftpb.ConfChangeAddLearnerNode
+		if memb.AutoPromote {
+			cc.Type = raftpb.ConfChangeAddAutoPromotingNode
+		}
 	}
 
 	return s.configure(ctx, cc)
