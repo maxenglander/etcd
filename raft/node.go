@@ -373,6 +373,8 @@ func (n *node) run(r *raft) {
 				break
 			}
 			switch cc.Type {
+			case pb.ConfChangeAddAutoPromotingNode:
+				r.addAutoPromotingNode(cc.NodeID)
 			case pb.ConfChangeAddNode:
 				r.addNode(cc.NodeID)
 			case pb.ConfChangeAddLearnerNode:

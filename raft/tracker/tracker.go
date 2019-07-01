@@ -25,8 +25,9 @@ import (
 // known about the nodes and learners in it. In particular, it tracks the match
 // index for each peer which in turn allows reasoning about the committed index.
 type ProgressTracker struct {
-	Voters   quorum.JointConfig
-	Learners map[uint64]struct{}
+	Voters        quorum.JointConfig
+	Learners      map[uint64]struct{}
+	AutoPromotees map[uint64]bool
 
 	Progress map[uint64]*Progress
 
@@ -43,9 +44,10 @@ func MakeProgressTracker(maxInflight int) ProgressTracker {
 			quorum.MajorityConfig{},
 			quorum.MajorityConfig{},
 		},
-		Learners: map[uint64]struct{}{},
-		Votes:    map[uint64]bool{},
-		Progress: map[uint64]*Progress{},
+		Learners:      map[uint64]struct{}{},
+		AutoPromotees: map[uint64]bool{},
+		Votes:         map[uint64]bool{},
+		Progress:      map[uint64]*Progress{},
 	}
 	return p
 }
@@ -96,6 +98,7 @@ func (p *ProgressTracker) RemoveAny(id uint64) {
 	delete(p.Voters[0], id)
 	delete(p.Voters[1], id)
 	delete(p.Learners, id)
+	delete(p.AutoPromotees, id)
 	delete(p.Progress, id)
 }
 
@@ -109,6 +112,9 @@ func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool, a
 		p.Voters[0][id] = struct{}{}
 	} else {
 		p.Learners[id] = struct{}{}
+		if autoPromote {
+			p.AutoPromotees[id] = true
+		}
 	}
 	p.Progress[id] = &Progress{
 		Next:        next,
@@ -155,6 +161,18 @@ func (p *ProgressTracker) VoterNodes() []uint64 {
 func (p *ProgressTracker) LearnerNodes() []uint64 {
 	nodes := make([]uint64, 0, len(p.Learners))
 	for id := range p.Learners {
+		nodes = append(nodes, id)
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
+	return nodes
+}
+
+// AutoPromotees returns a sorted slice of learners
+// that will be automatically promoted to voters
+// when caught up with the leader.
+func (p *ProgressTracker) AutoPromotingNodes() []uint64 {
+	nodes := make([]uint64, 0, len(p.AutoPromotees))
+	for id := range p.AutoPromotees {
 		nodes = append(nodes, id)
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })

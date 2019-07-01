@@ -1355,22 +1355,30 @@ func (r *raft) restore(s pb.Snapshot) bool {
 
 	r.raftLog.restore(s)
 	r.prs = tracker.MakeProgressTracker(r.prs.MaxInflight)
-	r.restoreNode(s.Metadata.ConfState.Nodes, false, false)
-	r.restoreNode(s.Metadata.ConfState.Learners, true, false)
-	r.restoreNode(s.Metadata.ConfState.LearningNodes, true, true)
+	r.restoreNode(s.Metadata.ConfState.Nodes, false)
+	r.restoreNode(s.Metadata.ConfState.Learners, true)
+	r.restoreAutoPromotingNode(s.Metadata.ConfState.AutoPromotees, true)
 	return true
 }
 
-func (r *raft) restoreNode(nodes []uint64, isLearner bool, autoPromote bool) {
+func (r *raft) restoreNode(nodes []uint64, isLearner bool) {
 	for _, n := range nodes {
 		match, next := uint64(0), r.raftLog.lastIndex()+1
 		if n == r.id {
 			match = next - 1
 			r.isLearner = isLearner
+		}
+		r.prs.InitProgress(n, match, next, isLearner, false /* autoPromote */)
+		r.logger.Infof("%x restored progress of %x [%s]", r.id, n, r.prs.Progress[n])
+	}
+}
+
+func (r *raft) restoreAutoPromotingNode(nodes []uint64, autoPromote bool) {
+	for _, n := range nodes {
+		if n == r.id {
 			r.autoPromote = autoPromote
 		}
-		r.prs.InitProgress(n, match, next, isLearner, autoPromote)
-		r.logger.Infof("%x restored progress of %x [%s]", r.id, n, r.prs.Progress[n])
+		r.prs.Progress[n].AutoPromote = autoPromote
 	}
 }
 
@@ -1386,29 +1394,23 @@ func (r *raft) promotable() bool {
 	return pr != nil && !pr.IsLearner
 }
 
+func (r *raft) addAutoPromotingNode(id uint64) {
+	r.addNodeOrLearnerNode(id, true, true)
+}
+
 func (r *raft) addNode(id uint64) {
-	r.addNodeOrLearnerNode(id, false)
+	r.addNodeOrLearnerNode(id, false, false)
 }
 
 func (r *raft) addLearner(id uint64) {
-	r.addNodeOrLearnerNode(id, true)
+	r.addNodeOrLearnerNode(id, true, false)
 }
 
-func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool) {
+func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool, autoPromote bool) {
 	pr := r.prs.Progress[id]
-	_isLearner := isLearner
-	autoPromote := false
 
 	if pr == nil {
-		emptyCluster := len(r.prs.Voters[0]) == 0 && len(r.prs.Learners) == 0
-
-		// New cluster members are added to non-empty clusters as learners,
-		// until they are caught up with the leader, at which point they are
-		// automatically promoted to voters.
-		_isLearner = isLearner || !emptyCluster
-
-		autoPromote = !(emptyCluster || isLearner)
-		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, _isLearner, autoPromote)
+		r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, isLearner, autoPromote)
 	} else {
 		if isLearner && !pr.IsLearner {
 			// Can only change Learner to Voter.
@@ -1424,10 +1426,9 @@ func (r *raft) addNodeOrLearnerNode(id uint64, isLearner bool) {
 
 		// Change Learner to Voter, use origin Learner progress.
 		r.prs.RemoveAny(id)
-		r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */, false /* autoPromote */)
+		r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */, autoPromote)
 		pr.IsLearner = false
-		autoPromote = false
-		pr.AutoPromote = autoPromote
+		pr.AutoPromote = false
 		*r.prs.Progress[id] = *pr
 	}
 
