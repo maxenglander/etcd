@@ -207,7 +207,9 @@ func createSnapshotFile(t *testing.T, kvs []kv) string {
 	cfg.LPUrls, cfg.APUrls = pURLs, pURLs
 	cfg.InitialCluster = fmt.Sprintf("%s=%s", cfg.Name, pURLs[0].String())
 	cfg.Dir = filepath.Join(os.TempDir(), fmt.Sprint(time.Now().Nanosecond()))
+	fmt.Println("Starting etcd (for snapshot)")
 	srv, err := embed.StartEtcd(cfg)
+	fmt.Println("Started etcd (for snapshot)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,20 +224,25 @@ func createSnapshotFile(t *testing.T, kvs []kv) string {
 	}
 
 	ccfg := clientv3.Config{Endpoints: []string{cfg.ACUrls[0].String()}}
+	fmt.Println("Creating client (for snapshot)")
 	cli, err := clientv3.New(ccfg)
+	fmt.Println("Created client (for snapshot)")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cli.Close()
 	for i := range kvs {
 		ctx, cancel := context.WithTimeout(context.Background(), testutil.RequestTimeout)
+		fmt.Printf("Putting %s=>%s (for snapshot)\n", kvs[i].k, kvs[i].v)
 		_, err = cli.Put(ctx, kvs[i].k, kvs[i].v)
+		fmt.Printf("Put %s=>%s (for snapshot)\n", kvs[i].k, kvs[i].v)
 		cancel()
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
+	fmt.Printf("Creating NewV3? (for snapshot)\n")
 	sp := NewV3(zap.NewExample())
 	dpPath := filepath.Join(os.TempDir(), fmt.Sprintf("snapshot%d.db", time.Now().Nanosecond()))
 	if err = sp.Save(context.Background(), ccfg, dpPath); err != nil {

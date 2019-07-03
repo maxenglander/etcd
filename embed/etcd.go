@@ -207,6 +207,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
 	}
 	print(e.cfg.logger, *cfg, srvcfg, memberInitialized)
+	fmt.Println("Creating new server (embed)")
 	if e.Server, err = etcdserver.NewServer(srvcfg); err != nil {
 		return e, err
 	}
@@ -224,7 +225,9 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			return e, err
 		}
 	}
+	fmt.Println("Starting new server (embed)")
 	e.Server.Start()
+	fmt.Println("Started server (embed)")
 
 	if err = e.servePeers(); err != nil {
 		return e, err

@@ -33,10 +33,14 @@ import (
 // snapshot file, and also be able to add another member to the cluster.
 func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 	kvs := []kv{{"foo1", "bar1"}, {"foo2", "bar2"}, {"foo3", "bar3"}}
+	fmt.Printf("Creating snapshot file\n")
 	dbPath := createSnapshotFile(t, kvs)
+	fmt.Printf("Created snapshot file\n")
 
 	clusterN := 3
+	fmt.Printf("Restoring cluster\n")
 	cURLs, pURLs, srvs := restoreCluster(t, clusterN, dbPath)
+	fmt.Printf("Restored cluster\n")
 	defer func() {
 		for i := 0; i < clusterN; i++ {
 			os.RemoveAll(srvs[i].Config().Dir)
@@ -55,6 +59,7 @@ func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 
 	urls := newEmbedURLs(2)
 	newCURLs, newPURLs := urls[:1], urls[1:]
+	fmt.Printf("Adding test member(s)\n")
 	if _, err = cli.MemberAdd(context.Background(), []string{newPURLs[0].String()}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +84,7 @@ func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 	cfg.InitialCluster += fmt.Sprintf(",%s=%s", cfg.Name, newPURLs[0].String())
 	cfg.Dir = filepath.Join(os.TempDir(), fmt.Sprint(time.Now().Nanosecond()))
 
+	fmt.Printf("Starting etcd\n")
 	srv, err := embed.StartEtcd(cfg)
 	if err != nil {
 		t.Fatal(err)

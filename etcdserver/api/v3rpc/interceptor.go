@@ -16,6 +16,7 @@ package v3rpc
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -49,6 +50,7 @@ func newUnaryInterceptor(s *etcdserver.EtcdServer) grpc.UnaryServerInterceptor {
 		}
 
 		if s.IsMemberExist(s.ID()) && s.IsLearner() && !isRPCSupportedForLearner(req) {
+			fmt.Printf("RPC is not suported for %x\n", s.ID())
 			return nil, rpctypes.ErrGPRCNotSupportedForLearner
 		}
 
