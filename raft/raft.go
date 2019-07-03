@@ -1395,14 +1395,17 @@ func (r *raft) promotable() bool {
 }
 
 func (r *raft) addAutoPromotingNode(id uint64) {
+	fmt.Printf("Adding auto-promoting node %x\n", id)
 	r.addNodeOrLearnerNode(id, true, true)
 }
 
 func (r *raft) addNode(id uint64) {
+	fmt.Printf("Adding node %x\n", id)
 	r.addNodeOrLearnerNode(id, false, false)
 }
 
 func (r *raft) addLearner(id uint64) {
+	fmt.Printf("Adding learner %x\n", id)
 	r.addNodeOrLearnerNode(id, true, false)
 }
 

@@ -211,6 +211,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 	if e.Server, err = etcdserver.NewServer(srvcfg); err != nil {
 		return e, err
 	}
+	fmt.Println("Created new server (embed)")
 
 	// buffer channel so goroutines on closed connections won't wait forever
 	e.errc = make(chan error, len(e.Peers)+len(e.Clients)+2*len(e.sctxs))

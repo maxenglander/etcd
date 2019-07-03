@@ -54,26 +54,35 @@ type Member struct {
 	Attributes
 }
 
-// NewMember creates a Member without an ID and generates one based on the
+// NewMember creates a node Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
-// A new member is added to a cluster as a learner, and is automatically
-// promoted to a voter upon catching up with the leader.
-func NewMember(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, true /* autoPromote */)
+func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
+	fmt.Println("Creating a new member (member)")
+	return newMember(name, peerURLs, clusterName, now, false /* isLeaner */, false /* autoPromote */)
+}
+
+// NewMemberAsAutoPromotingNode creates a learner Member without an ID and generates one
+// based on the cluster name, peer URLs, and time. This is used for bootstrapping/adding
+// new member. Auto-promoting learner members are automatically promoted to nodes upon
+// catching up with the master.
+func NewMemberAsAutoPromotingNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
+	fmt.Println("Creating a new member (member)")
+	return newMember(name, peerURLs, clusterName, now, true /* isLeaner */, true /* autoPromote */)
 }
 
 // NewMemberAsLearner creates a learner Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for adding new learner member.
-// Learners are not automatically promoted to voters.
 func NewMemberAsLearner(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, false /* autoPromote */)
+	fmt.Println("Creating a new member as learner (member)")
+	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, false /* autoPromote */)
 }
 
-func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, autoPromote bool) *Member {
+func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, isLearner bool, autoPromote bool) *Member {
+	fmt.Println("Creating a new member (member)")
 	m := &Member{
 		RaftAttributes: RaftAttributes{
 			PeerURLs:    peerURLs.StringSlice(),
-			IsLearner:   true,
+			IsLearner:   isLearner,
 			AutoPromote: autoPromote,
 		},
 		Attributes: Attributes{Name: name},
@@ -92,6 +101,7 @@ func newMember(name string, peerURLs types.URLs, clusterName string, now *time.T
 
 	hash := sha1.Sum(b)
 	m.ID = types.ID(binary.BigEndian.Uint64(hash[:8]))
+	fmt.Printf("Created a new member (member) %x\n", m.ID)
 	return m
 }
 

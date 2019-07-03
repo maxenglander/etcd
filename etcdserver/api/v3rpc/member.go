@@ -49,7 +49,7 @@ func (cs *ClusterServer) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) 
 	if r.IsLearner {
 		m = membership.NewMemberAsLearner("", urls, "", &now)
 	} else {
-		m = membership.NewMember("", urls, "", &now)
+		m = membership.NewMemberAsAutoPromotingNode("", urls, "", &now)
 	}
 	membs, merr := cs.server.AddMember(ctx, *m)
 	if merr != nil {

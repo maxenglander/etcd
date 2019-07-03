@@ -73,9 +73,11 @@ type ConfigChangeContext struct {
 // NewClusterFromURLsMap creates a new raft cluster using provided urls map. Currently, it does not support creating
 // cluster with raft learner member.
 func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) (*RaftCluster, error) {
+	fmt.Println("Creating new cluster from URLs map (cluster)")
 	c := NewCluster(lg, token)
 	for name, urls := range urlsmap {
-		m := NewMember(name, urls, token, nil)
+		fmt.Println("Creating new cluster from URLs map (cluster)")
+		m := NewMemberAsNode(name, urls, token, nil)
 		if _, ok := c.members[m.ID]; ok {
 			return nil, fmt.Errorf("member exists with identical ID %v", m)
 		}
@@ -285,7 +287,7 @@ func (c *RaftCluster) ValidateConfigurationChange(cc raftpb.ConfChange) error {
 		return ErrIDRemoved
 	}
 	switch cc.Type {
-	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			if c.lg != nil {
@@ -757,6 +759,7 @@ func ValidateClusterAndAssignIDs(lg *zap.Logger, local *RaftCluster, existing *R
 	ems := existing.Members()
 	lms := local.Members()
 	if len(ems) != len(lms) {
+		fmt.Printf("ems = %x, lms = %x\n", ems, lms)
 		return fmt.Errorf("member count is unequal")
 	}
 	sort.Sort(MembersByPeerURLs(ems))
