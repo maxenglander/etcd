@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -764,8 +765,10 @@ func TestServeLeader(t *testing.T) {
 }
 
 func TestServeMembersCreate(t *testing.T) {
+	fmt.Println("Must new url (etcdserver/api/v2http/client_test")
 	u := testutil.MustNewURL(t, membersPrefix)
 	b := []byte(`{"peerURLs":["http://127.0.0.1:1"]}`)
+	fmt.Println("New request (etcdserver/api/v2http/client_test")
 	req, err := http.NewRequest("POST", u.String(), bytes.NewReader(b))
 	if err != nil {
 		t.Fatal(err)
@@ -778,8 +781,10 @@ func TestServeMembersCreate(t *testing.T) {
 		clock:   clockwork.NewFakeClock(),
 		cluster: &fakeCluster{id: 1},
 	}
+	fmt.Println("New recorder (etcdserver/api/v2http/client_test")
 	rw := httptest.NewRecorder()
 
+	fmt.Println("Serve HTTP (etcdserver/api/v2http/client_test")
 	h.ServeHTTP(rw, req)
 
 	wcode := http.StatusCreated

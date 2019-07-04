@@ -758,7 +758,7 @@ func ValidateClusterAndAssignIDs(lg *zap.Logger, local *RaftCluster, existing *R
 	ems := existing.Members()
 	lms := local.Members()
 	if len(ems) != len(lms) {
-		fmt.Printf("ems = %x, lms = %x\n", ems, lms)
+		fmt.Printf("ems = %v, lms = %v\n", ems, lms)
 		return fmt.Errorf("member count is unequal")
 	}
 	sort.Sort(MembersByPeerURLs(ems))

@@ -856,6 +856,9 @@ message Member {
   repeated string clientURLs = 4;
   // isLearner indicates if the member is raft learner.
   bool isLearner = 5;
+  // autoPromote indicates whether the learner should be automatically promoted to a node
+  // when it has caught up with the leader
+  bool autoPromote = 6;
 }
 
 message MemberAddRequest {
@@ -863,6 +866,9 @@ message MemberAddRequest {
   repeated string peerURLs = 1;
   // isLearner indicates if the added member is raft learner.
   bool isLearner = 2;
+  // autoPromote indicates whether the added learner should be automatically promoted to a node
+  // when it has caught up with the leader
+  bool autoPromote = 3;
 }
 
 message MemberAddResponse {
@@ -992,6 +998,9 @@ message StatusResponse {
   int64 dbSizeInUse = 9;
   // isLearner indicates if the member is raft learner.
   bool isLearner = 10;
+  // autoPromote indicates if learner is configured to be automatically promoted
+  // to a node upon catching up with the leader.
+  bool autoPromote = 11;
 }
 
 message AuthEnableRequest {
