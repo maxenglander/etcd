@@ -57,8 +57,8 @@ type Member struct {
 // NewMember creates a node Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
 func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Println("Creating a new member (member)")
-	return newMember(name, peerURLs, clusterName, now, false /* isLeaner */, false /* autoPromote */)
+	fmt.Println("Creating a new member as node (member)")
+	return newMember(name, peerURLs, clusterName, now, false /* isLearner */, false /* autoPromote */)
 }
 
 // NewMemberAsAutoPromotingNode creates a learner Member without an ID and generates one
@@ -66,8 +66,8 @@ func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *
 // new member. Auto-promoting learner members are automatically promoted to nodes upon
 // catching up with the master.
 func NewMemberAsAutoPromotingNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Println("Creating a new member (member)")
-	return newMember(name, peerURLs, clusterName, now, true /* isLeaner */, true /* autoPromote */)
+	fmt.Println("Creating a new member as auto-promoting node (member)")
+	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, true /* autoPromote */)
 }
 
 // NewMemberAsLearner creates a learner Member without an ID and generates one based on the
@@ -78,7 +78,6 @@ func NewMemberAsLearner(name string, peerURLs types.URLs, clusterName string, no
 }
 
 func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, isLearner bool, autoPromote bool) *Member {
-	fmt.Println("Creating a new member (member)")
 	m := &Member{
 		RaftAttributes: RaftAttributes{
 			PeerURLs:    peerURLs.StringSlice(),
@@ -101,7 +100,6 @@ func newMember(name string, peerURLs types.URLs, clusterName string, now *time.T
 
 	hash := sha1.Sum(b)
 	m.ID = types.ID(binary.BigEndian.Uint64(hash[:8]))
-	fmt.Printf("Created a new member (member) %x\n", m.ID)
 	return m
 }
 

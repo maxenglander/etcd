@@ -27,6 +27,7 @@ import (
 var (
 	memberPeerURLs string
 	isLearner      bool
+	autoPromote    bool
 )
 
 // NewMemberCommand returns the cobra command for "member".
@@ -143,9 +144,13 @@ func memberAddCommandFunc(cmd *cobra.Command, args []string) {
 		err  error
 	)
 	if isLearner {
-		resp, err = cli.MemberAddAsLearner(ctx, urls)
+		if autoPromote {
+			resp, err = cli.MemberAddAsAutoPromotingNode(ctx, urls)
+		} else {
+			resp, err = cli.MemberAddAsLearner(ctx, urls)
+		}
 	} else {
-		resp, err = cli.MemberAdd(ctx, urls)
+		resp, err = cli.MemberAddAsNode(ctx, urls)
 	}
 	cancel()
 	if err != nil {

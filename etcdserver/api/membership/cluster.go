@@ -76,7 +76,6 @@ func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) 
 	fmt.Println("Creating new cluster from URLs map (cluster)")
 	c := NewCluster(lg, token)
 	for name, urls := range urlsmap {
-		fmt.Println("Creating new cluster from URLs map (cluster)")
 		m := NewMemberAsNode(name, urls, token, nil)
 		if _, ok := c.members[m.ID]; ok {
 			return nil, fmt.Errorf("member exists with identical ID %v", m)
