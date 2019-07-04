@@ -57,7 +57,6 @@ type Member struct {
 // NewMember creates a node Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
 func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Println("Creating a new member as node (member)")
 	return newMember(name, peerURLs, clusterName, now, false /* isLearner */, false /* autoPromote */)
 }
 
@@ -66,14 +65,12 @@ func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *
 // new member. Auto-promoting learner members are automatically promoted to nodes upon
 // catching up with the master.
 func NewMemberAsAutoPromotingNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Println("Creating a new member as auto-promoting node (member)")
 	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, true /* autoPromote */)
 }
 
 // NewMemberAsLearner creates a learner Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for adding new learner member.
 func NewMemberAsLearner(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Println("Creating a new member as learner (member)")
 	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, false /* autoPromote */)
 }
 

@@ -33,14 +33,10 @@ import (
 // snapshot file, and also be able to add another member to the cluster.
 func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 	kvs := []kv{{"foo1", "bar1"}, {"foo2", "bar2"}, {"foo3", "bar3"}}
-	fmt.Printf("Creating snapshot file (clientv3/snapshot/member_test)\n")
 	dbPath := createSnapshotFile(t, kvs)
-	fmt.Printf("Created snapshot file (clientv3/snapshot/member_test)\n")
 
 	clusterN := 3
-	fmt.Printf("Restoring cluster (clientv3/snapshot/member_test)\n")
 	cURLs, pURLs, srvs := restoreCluster(t, clusterN, dbPath)
-	fmt.Printf("Restored cluster (clientv3/snapshot/member_test)\n")
 	defer func() {
 		for i := 0; i < clusterN; i++ {
 			os.RemoveAll(srvs[i].Config().Dir)
@@ -59,11 +55,9 @@ func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 
 	urls := newEmbedURLs(2)
 	newCURLs, newPURLs := urls[:1], urls[1:]
-	fmt.Printf("Adding test member(s): %v (clientv3/snapshot/member_test)\n", []string{newPURLs[0].String()})
 	if _, err = cli.MemberAddAsNode(context.Background(), []string{newPURLs[0].String()}); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("Added test member(s): %v (clientv3/snapshot/member_test)\n", []string{newPURLs[0].String()})
 
 	// wait for membership reconfiguration apply
 	time.Sleep(testutil.ApplyTimeout)
@@ -85,7 +79,6 @@ func TestSnapshotV3RestoreMultiMemberAdd(t *testing.T) {
 	cfg.InitialCluster += fmt.Sprintf(",%s=%s", cfg.Name, newPURLs[0].String())
 	cfg.Dir = filepath.Join(os.TempDir(), fmt.Sprint(time.Now().Nanosecond()))
 
-	fmt.Printf("Starting etcd (clientv3/snapshot/member_test)\n")
 	srv, err := embed.StartEtcd(cfg)
 	if err != nil {
 		t.Fatal(err)

@@ -207,11 +207,9 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
 	}
 	print(e.cfg.logger, *cfg, srvcfg, memberInitialized)
-	fmt.Println("Creating new server (embed)")
 	if e.Server, err = etcdserver.NewServer(srvcfg); err != nil {
 		return e, err
 	}
-	fmt.Println("Created new server (embed)")
 
 	// buffer channel so goroutines on closed connections won't wait forever
 	e.errc = make(chan error, len(e.Peers)+len(e.Clients)+2*len(e.sctxs))
@@ -226,9 +224,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			return e, err
 		}
 	}
-	fmt.Println("Starting new server (embed)")
 	e.Server.Start()
-	fmt.Println("Started server (embed)")
 
 	if err = e.servePeers(); err != nil {
 		return e, err

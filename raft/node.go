@@ -17,7 +17,6 @@ package raft
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	pb "go.etcd.io/etcd/raft/raftpb"
 )
@@ -202,7 +201,6 @@ func StartNode(c *Config, peers []Peer) Node {
 	r := newRaft(c)
 	// become the follower at term 1 and apply initial configuration
 	// entries of term 1
-	fmt.Println("Becoming follower")
 	r.becomeFollower(1, None)
 	for _, peer := range peers {
 		cc := pb.ConfChange{Type: pb.ConfChangeAddNode, NodeID: peer.ID, Context: peer.Context}
@@ -227,13 +225,11 @@ func StartNode(c *Config, peers []Peer) Node {
 	// We do not set raftLog.applied so the application will be able
 	// to observe all conf changes via Ready.CommittedEntries.
 	for _, peer := range peers {
-		fmt.Printf("Adding peer %x\n", peer.ID)
 		r.addNode(peer.ID)
 	}
 
 	n := newNode()
 	n.logger = c.Logger
-	fmt.Println("Starting node")
 	go n.run(r)
 	return &n
 }
@@ -362,7 +358,6 @@ func (n *node) run(r *raft) {
 			}
 		case cc := <-n.confc:
 			if cc.NodeID == None {
-				r.logger.Infof("processing configuration change without a NodeID")
 				select {
 				case n.confstatec <- pb.ConfState{
 					Nodes:    r.prs.VoterNodes(),

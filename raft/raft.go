@@ -1386,26 +1386,18 @@ func (r *raft) restoreAutoPromotingNode(nodes []uint64, autoPromote bool) {
 // which is true when its own id is in progress list.
 func (r *raft) promotable() bool {
 	pr := r.prs.Progress[r.id]
-	if pr == nil {
-		r.logger.Warningf("%x is not promotable because its id is not in the progress list", r.id)
-	} else if pr.IsLearner {
-		r.logger.Warningf("%x is not promotable because it is a learner", r.id)
-	}
 	return pr != nil && !pr.IsLearner
 }
 
 func (r *raft) addAutoPromotingNode(id uint64) {
-	fmt.Printf("Adding auto-promoting node %x (raft)\n", id)
 	r.addNodeOrLearnerNode(id, true, true)
 }
 
 func (r *raft) addNode(id uint64) {
-	fmt.Printf("Adding node %x (raft)\n", id)
 	r.addNodeOrLearnerNode(id, false, false)
 }
 
 func (r *raft) addLearner(id uint64) {
-	fmt.Printf("Adding learner %x (raft)\n", id)
 	r.addNodeOrLearnerNode(id, true, false)
 }
 

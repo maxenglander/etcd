@@ -16,7 +16,6 @@ package clientv3
 
 import (
 	"context"
-	"fmt"
 
 	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
@@ -101,7 +100,6 @@ func (c *cluster) memberAdd(ctx context.Context, peerAddrs []string, isLearner b
 		IsLearner:   isLearner,
 		AutoPromote: autoPromote,
 	}
-	fmt.Printf("Adding member isLearner=%t autoPromote=%t\n", isLearner, autoPromote)
 	resp, err := c.remote.MemberAdd(ctx, r, c.callOpts...)
 	if err != nil {
 		return nil, toErr(ctx, err)
