@@ -635,6 +635,29 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	return srv, nil
 }
 
+// Get one auto-promoting learner that is caught up with leader.
+func (s *EtcdServer) getNextReadyAutoPromote() (ch <-chan uint64) {
+	rs := s.raftStatus()
+
+	// leader's raftStatus.Progress is not nil
+	if rs.Progress == nil {
+		plog.Infof("Not getting next auto-promote because local progress is nil\n")
+		return nil
+	}
+
+	for memberID, progress := range rs.Progress {
+		if progress.IsLearner && progress.AutoPromote {
+			if err := s.isLearnerReady(memberID); err == nil {
+				pmch := make(chan uint64, 1)
+				pmch <- memberID
+				return pmch
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *EtcdServer) getLogger() *zap.Logger {
 	s.lgMu.RLock()
 	l := s.lg
@@ -1035,6 +1058,10 @@ func (s *EtcdServer) run() {
 		select {
 		case ap := <-s.r.apply():
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
+			sched.Schedule(f)
+		case pmID := <-s.getNextReadyAutoPromote():
+			plog.Infof("Auto-promoting %x\n", pmID)
+			f := func(context.Context) { s.PromoteMember(context.TODO(), pmID) }
 			sched.Schedule(f)
 		case leases := <-expiredLeaseC:
 			s.goAttach(func() {
@@ -1775,13 +1802,16 @@ func (s *EtcdServer) isLearnerReady(id uint64) error {
 	}
 
 	if isFound {
+		plog.Infof("Found a learner matching %x\n", id)
 		leaderMatch := rs.Progress[leaderID].Match
 		// the learner's Match not caught up with leader yet
 		if float64(learnerMatch) < float64(leaderMatch)*readyPercent {
+			plog.Infof("Learner is not ready for promotion %x\n", id)
 			return ErrLearnerNotReady
 		}
 	}
 
+	plog.Infof("Learner is ready for promotion %x\n", id)
 	return nil
 }
 
@@ -2240,7 +2270,7 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 	lg := s.getLogger()
 	*confState = *s.r.ApplyConfChange(cc)
 	switch cc.Type {
-	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(membership.ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			if lg != nil {
