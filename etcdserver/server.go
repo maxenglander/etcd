@@ -277,6 +277,8 @@ type EtcdServer struct {
 	leadElectedTime time.Time
 
 	*AccessController
+
+	autoPromotionInProgress bool
 }
 
 // NewServer creates a new EtcdServer from the supplied configuration. The
@@ -636,12 +638,15 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 }
 
 // Get one auto-promoting learner that is caught up with leader.
-func (s *EtcdServer) getNextReadyAutoPromote() (ch <-chan uint64) {
+func (s *EtcdServer) getAutoPromoteC() (ch <-chan uint64) {
+	if s.autoPromotionInProgress {
+		return nil
+	}
+
 	rs := s.raftStatus()
 
 	// leader's raftStatus.Progress is not nil
 	if rs.Progress == nil {
-		plog.Infof("Not getting next auto-promote because local progress is nil\n")
 		return nil
 	}
 
@@ -1059,10 +1064,12 @@ func (s *EtcdServer) run() {
 		case ap := <-s.r.apply():
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
 			sched.Schedule(f)
-		case pmID := <-s.getNextReadyAutoPromote():
-			plog.Infof("Auto-promoting %x\n", pmID)
-			f := func(context.Context) { s.PromoteMember(context.TODO(), pmID) }
+		case pmID := <-s.getAutoPromoteC():
+			s.autoPromotionInProgress = true
+			plog.Infof("Scheduling for promotion %x\n", pmID)
+			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
 			sched.Schedule(f)
+			plog.Infof("Scheduled for promotion %x\n", pmID)
 		case leases := <-expiredLeaseC:
 			s.goAttach(func() {
 				// Increases throughput of expired leases deletion process through parallelization
@@ -1599,7 +1606,9 @@ func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*
 	}
 
 	// by default StrictReconfigCheck is enabled; reject new members if unhealthy.
+
 	if err := s.mayAddMember(memb); err != nil {
+		plog.Warningf("May not add member :(\n")
 		return nil, err
 	}
 
@@ -1624,6 +1633,7 @@ func (s *EtcdServer) mayAddMember(memb membership.Member) error {
 		return nil
 	}
 
+	plog.Infof("Evaluating whether may add voting member; learner=%t\n", memb.IsLearner)
 	// protect quorum when adding voting member
 	if !memb.IsLearner && !s.cluster.IsReadyToAddVotingMember() {
 		if lg := s.getLogger(); lg != nil {
@@ -1678,12 +1688,15 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 	// only raft leader has information on whether the to-be-promoted learner node is ready. If promoteMember call
 	// fails with ErrNotLeader, forward the request to leader node via HTTP. If promoteMember call fails with error
 	// other than ErrNotLeader, return the error.
+	plog.Infof("Promoting member %x\n", id)
 	resp, err := s.promoteMember(ctx, id)
 	if err == nil {
+		plog.Infof("Promoted member %x\n", id)
 		learnerPromoteSucceed.Inc()
 		return resp, nil
 	}
 	if err != ErrNotLeader {
+		plog.Infof("Failed to promote member %s\n", err)
 		learnerPromoteFailed.WithLabelValues(err.Error()).Inc()
 		return resp, err
 	}
@@ -1714,6 +1727,13 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 	return nil, ErrCanceled
 }
 
+func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
+	members, err := s.PromoteMember(ctx, id)
+	plog.Infof("Finished auto promotiong, result: %s\n", err)
+	s.autoPromotionInProgress = false
+	return members, err
+}
+
 // promoteMember checks whether the to-be-promoted learner node is ready before sending the promote
 // request to raft.
 // The function returns ErrNotLeader if the local node is not raft leader (therefore does not have
@@ -1721,11 +1741,13 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 // local node is leader (therefore has enough information) but decided the learner node is not ready
 // to be promoted.
 func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
+	plog.Infof("Checking membership op eration permission\n")
 	if err := s.checkMembershipOperationPermission(ctx); err != nil {
 		return nil, err
 	}
 
 	// check if we can promote this learner.
+	plog.Infof("Evaluating whether may promote member\n")
 	if err := s.mayPromoteMember(types.ID(id)); err != nil {
 		return nil, err
 	}
@@ -1749,19 +1771,26 @@ func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membershi
 		Context: b,
 	}
 
-	return s.configure(ctx, cc)
+	plog.Infof("Configuring membership change")
+	members, err := s.configure(ctx, cc)
+	plog.Infof("Configured membership change, result: %s\n", err)
+	return members, err
 }
 
 func (s *EtcdServer) mayPromoteMember(id types.ID) error {
+	plog.Infof("Evaluating if learner is ready\n")
 	err := s.isLearnerReady(uint64(id))
 	if err != nil {
 		return err
 	}
 
+	plog.Infof("Checking strict reconfig check\n")
 	if !s.Cfg.StrictReconfigCheck {
 		return nil
 	}
+	plog.Infof("Checking whether member is ready to promote\n")
 	if !s.cluster.IsReadyToPromoteMember(uint64(id)) {
+		plog.Infof("No, member is not ready to promote\n")
 		if lg := s.getLogger(); lg != nil {
 			lg.Warn(
 				"rejecting member promote request; not enough healthy members",
@@ -1775,6 +1804,7 @@ func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 		return ErrNotEnoughStartedMembers
 	}
 
+	plog.Infof("We may promote member\n")
 	return nil
 }
 
@@ -1802,16 +1832,13 @@ func (s *EtcdServer) isLearnerReady(id uint64) error {
 	}
 
 	if isFound {
-		plog.Infof("Found a learner matching %x\n", id)
 		leaderMatch := rs.Progress[leaderID].Match
 		// the learner's Match not caught up with leader yet
 		if float64(learnerMatch) < float64(leaderMatch)*readyPercent {
-			plog.Infof("Learner is not ready for promotion %x\n", id)
 			return ErrLearnerNotReady
 		}
 	}
 
-	plog.Infof("Learner is ready for promotion %x\n", id)
 	return nil
 }
 
@@ -1955,11 +1982,14 @@ func (s *EtcdServer) configure(ctx context.Context, cc raftpb.ConfChange) ([]*me
 	ch := s.w.Register(cc.ID)
 
 	start := time.Now()
+	plog.Infof("Proposing conf change\n")
 	if err := s.r.ProposeConfChange(ctx, cc); err != nil {
 		s.w.Trigger(cc.ID, nil)
 		return nil, err
 	}
+	plog.Infof("Proposed conf change\n")
 
+	defer plog.Infof("Finished conf change proposal\n")
 	select {
 	case x := <-ch:
 		if x == nil {

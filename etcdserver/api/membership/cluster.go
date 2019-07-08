@@ -664,6 +664,7 @@ func (c *RaftCluster) IsReadyToPromoteMember(id uint64) bool {
 	}
 
 	nquorum := nmembers/2 + 1
+	plog.Infof("There are %x members, %x started, quorum is %x\n", nmembers, nstarted, nquorum)
 	if nstarted < nquorum {
 		if c.lg != nil {
 			c.lg.Warn(
