@@ -486,6 +486,7 @@ func (c *RaftCluster) PromoteMember(id types.ID) {
 	defer c.Unlock()
 
 	c.members[id].RaftAttributes.IsLearner = false
+	c.members[id].RaftAttributes.AutoPromote = false
 	if c.v2store != nil {
 		mustUpdateMemberInStore(c.v2store, c.members[id])
 	}

@@ -947,7 +947,9 @@ func (s *EtcdServer) run() {
 	}
 
 	// asynchronously accept apply packets, dispatch progress in-order
-	sched := schedule.NewFIFOScheduler()
+	apSched := schedule.NewFIFOScheduler()
+	// asynchronously promote learners to voters, dispatch progress in-order
+	pmSched := schedule.NewFIFOScheduler()
 
 	var (
 		smu   sync.RWMutex
@@ -1023,7 +1025,8 @@ func (s *EtcdServer) run() {
 		s.wgMu.Unlock()
 		s.cancel()
 
-		sched.Stop()
+		apSched.Stop()
+		pmSched.Stop()
 
 		// wait for gouroutines before closing raft so wal stays open
 		s.wg.Wait()
@@ -1062,14 +1065,14 @@ func (s *EtcdServer) run() {
 	for {
 		select {
 		case ap := <-s.r.apply():
+			if len(ap.entries) > 0 {
+				plog.Infof("got some new entries in da server\n")
+				for idx, entry := range ap.entries {
+					plog.Infof("got %d entry of type %s in da server\n", idx, entry.Type)
+				}
+			}
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
-			sched.Schedule(f)
-		case pmID := <-s.getAutoPromoteC():
-			s.autoPromotionInProgress = true
-			plog.Infof("Scheduling for promotion %x\n", pmID)
-			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
-			sched.Schedule(f)
-			plog.Infof("Scheduled for promotion %x\n", pmID)
+			apSched.Schedule(f)
 		case leases := <-expiredLeaseC:
 			s.goAttach(func() {
 				// Increases throughput of expired leases deletion process through parallelization
@@ -1117,6 +1120,12 @@ func (s *EtcdServer) run() {
 			}
 		case <-s.stop:
 			return
+		case pmID := <-s.getAutoPromoteC():
+			s.autoPromotionInProgress = true
+			plog.Infof("Scheduling for promotion %x\n", pmID)
+			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
+			pmSched.Schedule(f)
+			plog.Infof("Scheduled for promotion %x\n", pmID)
 		}
 	}
 }
@@ -1377,6 +1386,7 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 	if len(apply.entries) == 0 {
 		return
 	}
+	plog.Infof("applying some new entries")
 	firsti := apply.entries[0].Index
 	if firsti > ep.appliedi+1 {
 		if lg := s.getLogger(); lg != nil {
@@ -1741,7 +1751,7 @@ func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membe
 // local node is leader (therefore has enough information) but decided the learner node is not ready
 // to be promoted.
 func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
-	plog.Infof("Checking membership op eration permission\n")
+	plog.Infof("Checking membership operation permission\n")
 	if err := s.checkMembershipOperationPermission(ctx); err != nil {
 		return nil, err
 	}
@@ -1982,7 +1992,7 @@ func (s *EtcdServer) configure(ctx context.Context, cc raftpb.ConfChange) ([]*me
 	ch := s.w.Register(cc.ID)
 
 	start := time.Now()
-	plog.Infof("Proposing conf change\n")
+	plog.Infof("Proposing conf change: %+v\n", cc)
 	if err := s.r.ProposeConfChange(ctx, cc); err != nil {
 		s.w.Trigger(cc.ID, nil)
 		return nil, err
@@ -2000,6 +2010,7 @@ func (s *EtcdServer) configure(ctx context.Context, cc raftpb.ConfChange) ([]*me
 			}
 		}
 		resp := x.(*confChangeResponse)
+		plog.Infof("Got a conf change response\n")
 		if lg := s.getLogger(); lg != nil {
 			lg.Info(
 				"applied a configuration change through raft",
@@ -2166,6 +2177,7 @@ func (s *EtcdServer) apply(
 ) (appliedt uint64, appliedi uint64, shouldStop bool) {
 	for i := range es {
 		e := es[i]
+		plog.Infof("Applying entry of type %s\n", e.Type)
 		switch e.Type {
 		case raftpb.EntryNormal:
 			s.applyEntryNormal(&e)
@@ -2179,10 +2191,12 @@ func (s *EtcdServer) apply(
 			}
 			var cc raftpb.ConfChange
 			pbutil.MustUnmarshal(&cc, e.Data)
+			plog.Infof("Applying conf change\n")
 			removedSelf, err := s.applyConfChange(cc, confState)
 			s.setAppliedIndex(e.Index)
 			s.setTerm(e.Term)
 			shouldStop = shouldStop || removedSelf
+			plog.Infof("Triggering conf change response with ID %x and members %v\n", cc.ID, s.cluster.Members())
 			s.w.Trigger(cc.ID, &confChangeResponse{s.cluster.Members(), err})
 
 		default:
@@ -2291,6 +2305,7 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 // applyConfChange applies a ConfChange to the server. It is only
 // invoked with a ConfChange that has already passed through Raft
 func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.ConfState) (bool, error) {
+	plog.Infof("Going to apply conf change\n")
 	if err := s.cluster.ValidateConfigurationChange(cc); err != nil {
 		cc.NodeID = raft.None
 		s.r.ApplyConfChange(cc)
@@ -2332,13 +2347,14 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 
 		// update the isLearner metric when this server id is equal to the id in raft member confChange
 		if confChangeContext.Member.ID == s.id {
-			if cc.Type == raftpb.ConfChangeAddLearnerNode {
+			if cc.Type == raftpb.ConfChangeAddLearnerNode || cc.Type == raftpb.ConfChangeAddAutoPromotingNode {
 				isLearner.Set(1)
 			} else {
 				isLearner.Set(0)
 			}
 		}
 
+		plog.Infof("Applied conf change")
 	case raftpb.ConfChangeRemoveNode:
 		id := types.ID(cc.NodeID)
 		s.cluster.RemoveMember(id)
