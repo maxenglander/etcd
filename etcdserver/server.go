@@ -1334,7 +1334,7 @@ func (s *EtcdServer) applySnapshot(ep *etcdProgress, apply *apply) {
 		plog.Info("finished recovering store v2")
 	}
 
-	s.cluster.SetBackend(s.be)
+	s.cluster.SetBackend(newbe)
 
 	if lg != nil {
 		lg.Info("restoring cluster configuration")
