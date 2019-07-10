@@ -1065,12 +1065,6 @@ func (s *EtcdServer) run() {
 	for {
 		select {
 		case ap := <-s.r.apply():
-			if len(ap.entries) > 0 {
-				plog.Infof("got some new entries in da server\n")
-				for idx, entry := range ap.entries {
-					plog.Infof("got %d entry of type %s in da server\n", idx, entry.Type)
-				}
-			}
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
 			apSched.Schedule(f)
 		case leases := <-expiredLeaseC:
@@ -1122,10 +1116,8 @@ func (s *EtcdServer) run() {
 			return
 		case pmID := <-s.getAutoPromoteC():
 			s.autoPromotionInProgress = true
-			plog.Infof("Scheduling for promotion %x\n", pmID)
 			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
 			pmSched.Schedule(f)
-			plog.Infof("Scheduled for promotion %x\n", pmID)
 		}
 	}
 }
@@ -1386,7 +1378,6 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 	if len(apply.entries) == 0 {
 		return
 	}
-	plog.Infof("applying some new entries")
 	firsti := apply.entries[0].Index
 	if firsti > ep.appliedi+1 {
 		if lg := s.getLogger(); lg != nil {
@@ -1616,9 +1607,7 @@ func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*
 	}
 
 	// by default StrictReconfigCheck is enabled; reject new members if unhealthy.
-
 	if err := s.mayAddMember(memb); err != nil {
-		plog.Warningf("May not add member :(\n")
 		return nil, err
 	}
 
@@ -1643,7 +1632,6 @@ func (s *EtcdServer) mayAddMember(memb membership.Member) error {
 		return nil
 	}
 
-	plog.Infof("Evaluating whether may add voting member; learner=%t\n", memb.IsLearner)
 	// protect quorum when adding voting member
 	if !memb.IsLearner && !s.cluster.IsReadyToAddVotingMember() {
 		if lg := s.getLogger(); lg != nil {
@@ -1698,15 +1686,12 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 	// only raft leader has information on whether the to-be-promoted learner node is ready. If promoteMember call
 	// fails with ErrNotLeader, forward the request to leader node via HTTP. If promoteMember call fails with error
 	// other than ErrNotLeader, return the error.
-	plog.Infof("Promoting member %x\n", id)
 	resp, err := s.promoteMember(ctx, id)
 	if err == nil {
-		plog.Infof("Promoted member %x\n", id)
 		learnerPromoteSucceed.Inc()
 		return resp, nil
 	}
 	if err != ErrNotLeader {
-		plog.Infof("Failed to promote member %s\n", err)
 		learnerPromoteFailed.WithLabelValues(err.Error()).Inc()
 		return resp, err
 	}
@@ -1739,7 +1724,6 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 
 func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
 	members, err := s.PromoteMember(ctx, id)
-	plog.Infof("Finished auto promotiong, result: %s\n", err)
 	s.autoPromotionInProgress = false
 	return members, err
 }
@@ -1751,13 +1735,11 @@ func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membe
 // local node is leader (therefore has enough information) but decided the learner node is not ready
 // to be promoted.
 func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
-	plog.Infof("Checking membership operation permission\n")
 	if err := s.checkMembershipOperationPermission(ctx); err != nil {
 		return nil, err
 	}
 
 	// check if we can promote this learner.
-	plog.Infof("Evaluating whether may promote member\n")
 	if err := s.mayPromoteMember(types.ID(id)); err != nil {
 		return nil, err
 	}
@@ -1781,10 +1763,7 @@ func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membershi
 		Context: b,
 	}
 
-	plog.Infof("Configuring membership change")
-	members, err := s.configure(ctx, cc)
-	plog.Infof("Configured membership change, result: %s\n", err)
-	return members, err
+	return s.configure(ctx, cc)
 }
 
 func (s *EtcdServer) mayPromoteMember(id types.ID) error {
@@ -1794,13 +1773,10 @@ func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 		return err
 	}
 
-	plog.Infof("Checking strict reconfig check\n")
 	if !s.Cfg.StrictReconfigCheck {
 		return nil
 	}
-	plog.Infof("Checking whether member is ready to promote\n")
 	if !s.cluster.IsReadyToPromoteMember(uint64(id)) {
-		plog.Infof("No, member is not ready to promote\n")
 		if lg := s.getLogger(); lg != nil {
 			lg.Warn(
 				"rejecting member promote request; not enough healthy members",
@@ -1814,7 +1790,6 @@ func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 		return ErrNotEnoughStartedMembers
 	}
 
-	plog.Infof("We may promote member\n")
 	return nil
 }
 
@@ -1992,14 +1967,11 @@ func (s *EtcdServer) configure(ctx context.Context, cc raftpb.ConfChange) ([]*me
 	ch := s.w.Register(cc.ID)
 
 	start := time.Now()
-	plog.Infof("Proposing conf change: %+v\n", cc)
 	if err := s.r.ProposeConfChange(ctx, cc); err != nil {
 		s.w.Trigger(cc.ID, nil)
 		return nil, err
 	}
-	plog.Infof("Proposed conf change\n")
 
-	defer plog.Infof("Finished conf change proposal\n")
 	select {
 	case x := <-ch:
 		if x == nil {
@@ -2010,7 +1982,6 @@ func (s *EtcdServer) configure(ctx context.Context, cc raftpb.ConfChange) ([]*me
 			}
 		}
 		resp := x.(*confChangeResponse)
-		plog.Infof("Got a conf change response\n")
 		if lg := s.getLogger(); lg != nil {
 			lg.Info(
 				"applied a configuration change through raft",
@@ -2177,7 +2148,6 @@ func (s *EtcdServer) apply(
 ) (appliedt uint64, appliedi uint64, shouldStop bool) {
 	for i := range es {
 		e := es[i]
-		plog.Infof("Applying entry of type %s\n", e.Type)
 		switch e.Type {
 		case raftpb.EntryNormal:
 			s.applyEntryNormal(&e)
@@ -2191,12 +2161,10 @@ func (s *EtcdServer) apply(
 			}
 			var cc raftpb.ConfChange
 			pbutil.MustUnmarshal(&cc, e.Data)
-			plog.Infof("Applying conf change\n")
 			removedSelf, err := s.applyConfChange(cc, confState)
 			s.setAppliedIndex(e.Index)
 			s.setTerm(e.Term)
 			shouldStop = shouldStop || removedSelf
-			plog.Infof("Triggering conf change response with ID %x and members %v\n", cc.ID, s.cluster.Members())
 			s.w.Trigger(cc.ID, &confChangeResponse{s.cluster.Members(), err})
 
 		default:
@@ -2305,7 +2273,6 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 // applyConfChange applies a ConfChange to the server. It is only
 // invoked with a ConfChange that has already passed through Raft
 func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.ConfState) (bool, error) {
-	plog.Infof("Going to apply conf change\n")
 	if err := s.cluster.ValidateConfigurationChange(cc); err != nil {
 		cc.NodeID = raft.None
 		s.r.ApplyConfChange(cc)
@@ -2354,7 +2321,6 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 			}
 		}
 
-		plog.Infof("Applied conf change")
 	case raftpb.ConfChangeRemoveNode:
 		id := types.ID(cc.NodeID)
 		s.cluster.RemoveMember(id)

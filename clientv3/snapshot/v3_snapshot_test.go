@@ -229,9 +229,7 @@ func createSnapshotFile(t *testing.T, kvs []kv) string {
 	defer cli.Close()
 	for i := range kvs {
 		ctx, cancel := context.WithTimeout(context.Background(), testutil.RequestTimeout)
-		fmt.Printf("Putting %s=>%s (for snapshot)\n", kvs[i].k, kvs[i].v)
 		_, err = cli.Put(ctx, kvs[i].k, kvs[i].v)
-		fmt.Printf("Put %s=>%s (for snapshot)\n", kvs[i].k, kvs[i].v)
 		cancel()
 		if err != nil {
 			t.Fatal(err)

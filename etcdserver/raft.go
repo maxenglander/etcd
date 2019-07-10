@@ -212,13 +212,6 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 
 				updateCommittedIndex(&ap, rh)
 
-				if len(ap.entries) > 0 {
-					plog.Infof("sending some entries upwards")
-					for idx, entry := range ap.entries {
-						plog.Infof("entry %d, type %s", idx, entry.Type)
-					}
-				}
-
 				select {
 				case r.applyc <- ap:
 				case <-r.stopped:

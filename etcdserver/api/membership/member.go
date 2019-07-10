@@ -65,7 +65,6 @@ func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *
 // new member. Auto-promoting learner members are automatically promoted to nodes upon
 // catching up with the master.
 func NewMemberAsAutoPromotingNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	fmt.Printf("Adding member as auto promoting node: %s (etcdserver/api/membership/member)\n", name)
 	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, true /* autoPromote */)
 }
 

@@ -290,7 +290,6 @@ func (l *raftLog) matchTerm(i, term uint64) bool {
 
 func (l *raftLog) maybeCommit(maxIndex, term uint64) bool {
 	if maxIndex > l.committed && l.zeroTermOnErrCompacted(l.term(maxIndex)) == term {
-		l.logger.Infof("committing to %d", maxIndex)
 		l.commitTo(maxIndex)
 		return true
 	}

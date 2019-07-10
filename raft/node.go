@@ -358,7 +358,6 @@ func (n *node) run(r *raft) {
 		case pm := <-propc:
 			m := pm.m
 			m.From = r.id
-			n.logger.Infof("raft.node: sending message to raft\n")
 			err := r.Step(m)
 			if pm.result != nil {
 				pm.result <- err
@@ -389,7 +388,6 @@ func (n *node) run(r *raft) {
 				prevSoftSt = rd.SoftState
 			}
 			if len(rd.Entries) > 0 {
-				n.logger.Infof("Got some new entries woo")
 				prevLastUnstablei = rd.Entries[len(rd.Entries)-1].Index
 				prevLastUnstablet = rd.Entries[len(rd.Entries)-1].Term
 				havePrevLastUnstablei = true
@@ -448,7 +446,6 @@ func (n *node) Propose(ctx context.Context, data []byte) error {
 func (n *node) Step(ctx context.Context, m pb.Message) error {
 	// ignore unexpected local messages receiving over network
 	if IsLocalMsg(m.Type) {
-		n.logger.Warningf("Unexpected local message!")
 		// TODO: return an error?
 		return nil
 	}
@@ -456,7 +453,6 @@ func (n *node) Step(ctx context.Context, m pb.Message) error {
 }
 
 func (n *node) ProposeConfChange(ctx context.Context, cc pb.ConfChange) error {
-	n.logger.Infof("raft.node: got conf change proposal\n")
 	data, err := cc.Marshal()
 	if err != nil {
 		return err

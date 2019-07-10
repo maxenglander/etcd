@@ -123,7 +123,6 @@ func (h *peerMemberPromoteHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fmt.Printf("Promoting member %x\n", id)
 	resp, err := h.server.PromoteMember(r.Context(), id)
 	if err != nil {
 		switch err {

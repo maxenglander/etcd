@@ -16,7 +16,6 @@ package clientv3
 
 import (
 	"context"
-	"fmt"
 
 	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
@@ -79,7 +78,6 @@ func NewClusterFromClusterClient(remote pb.ClusterClient, c *Client) Cluster {
 }
 
 func (c *cluster) MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	fmt.Println("Adding member as auto-promoting node\n")
 	return c.memberAdd(ctx, peerAddrs, true, true)
 }
 

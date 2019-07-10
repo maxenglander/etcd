@@ -665,7 +665,6 @@ func (c *RaftCluster) IsReadyToPromoteMember(id uint64) bool {
 	}
 
 	nquorum := nmembers/2 + 1
-	plog.Infof("There are %x members, %x started, quorum is %x\n", nmembers, nstarted, nquorum)
 	if nstarted < nquorum {
 		if c.lg != nil {
 			c.lg.Warn(
@@ -759,9 +758,7 @@ func ValidateClusterAndAssignIDs(lg *zap.Logger, local *RaftCluster, existing *R
 	ems := existing.Members()
 	lms := local.Members()
 	if len(ems) != len(lms) {
-		return fmt.Errorf("member count (existing = %x, local = %x) is unequal", len(ems), len(lms))
-	} else {
-		fmt.Printf("member count existing = %x, local = %x", len(ems), len(lms))
+		return fmt.Errorf("member count is unequal")
 	}
 	sort.Sort(MembersByPeerURLs(ems))
 	sort.Sort(MembersByPeerURLs(lms))

@@ -16,7 +16,6 @@ package v3rpc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"go.etcd.io/etcd/etcdserver"
@@ -49,7 +48,6 @@ func (cs *ClusterServer) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) 
 	var m *membership.Member
 	if r.IsLearner {
 		if r.AutoPromote {
-			fmt.Printf("Adding new member as auto promoting node (etcdserver/api/v3rpc/member)\n")
 			m = membership.NewMemberAsAutoPromotingNode("", urls, "", &now)
 		} else {
 			m = membership.NewMemberAsLearner("", urls, "", &now)

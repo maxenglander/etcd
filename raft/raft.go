@@ -533,7 +533,6 @@ func (r *raft) sendHeartbeat(to uint64, ctx []byte) {
 func (r *raft) bcastAppend() {
 	r.prs.Visit(func(id uint64, _ *tracker.Progress) {
 		if id == r.id {
-			r.logger.Infof("Not going to send append to myself")
 			return
 		}
 
@@ -565,7 +564,6 @@ func (r *raft) bcastHeartbeatWithCtx(ctx []byte) {
 // r.bcastAppend).
 func (r *raft) maybeCommit() bool {
 	mci := r.prs.Committed()
-	r.logger.Infof("attempting to advance commit index")
 	return r.raftLog.maybeCommit(mci, r.Term)
 }
 
@@ -601,7 +599,6 @@ func (r *raft) reset(term uint64) {
 }
 
 func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
-	r.logger.Infof("Appending an entry")
 	li := r.raftLog.lastIndex()
 	for i := range es {
 		es[i].Term = r.Term
@@ -617,7 +614,6 @@ func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 		return false
 	}
 	// use latest "last" index after truncate/append
-	r.logger.Infof("Appending entry to raft log")
 	li = r.raftLog.append(es...)
 	r.prs.Progress[r.id].MaybeUpdate(li)
 	// Regardless of maybeCommit's return, our caller will call bcastAppend.
@@ -631,7 +627,6 @@ func (r *raft) tickElection() {
 
 	if r.promotable() && r.pastElectionTimeout() {
 		r.electionElapsed = 0
-		r.logger.Infof("sending MsgHup from %x", r.id)
 		r.Step(pb.Message{From: r.id, Type: pb.MsgHup})
 	}
 }
@@ -970,7 +965,6 @@ func stepLeader(r *raft, m pb.Message) error {
 		})
 		return nil
 	case pb.MsgProp:
-		r.logger.Infof("Got a proposal\n")
 		if len(m.Entries) == 0 {
 			r.logger.Panicf("%x stepped empty MsgProp", r.id)
 		}
@@ -998,12 +992,9 @@ func stepLeader(r *raft, m pb.Message) error {
 			}
 		}
 
-		r.logger.Infof("Trying to append entries")
 		if !r.appendEntry(m.Entries...) {
-			r.logger.Infof("Dropping proposal")
 			return ErrProposalDropped
 		}
-		r.logger.Infof("Broadcasting append")
 		r.bcastAppend()
 		return nil
 	case pb.MsgReadIndex:
