@@ -75,7 +75,7 @@ type ConfigChangeContext struct {
 func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) (*RaftCluster, error) {
 	c := NewCluster(lg, token)
 	for name, urls := range urlsmap {
-		m := NewMember(name, urls, token, nil)
+		m := NewMemberAsNode(name, urls, token, nil)
 		if _, ok := c.members[m.ID]; ok {
 			return nil, fmt.Errorf("member exists with identical ID %v", m)
 		}
@@ -285,7 +285,7 @@ func (c *RaftCluster) ValidateConfigurationChange(cc raftpb.ConfChange) error {
 		return ErrIDRemoved
 	}
 	switch cc.Type {
-	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			if c.lg != nil {
@@ -486,6 +486,7 @@ func (c *RaftCluster) PromoteMember(id types.ID) {
 	defer c.Unlock()
 
 	c.members[id].RaftAttributes.IsLearner = false
+	c.members[id].RaftAttributes.AutoPromote = false
 	if c.v2store != nil {
 		mustUpdateMemberInStore(c.v2store, c.members[id])
 	}

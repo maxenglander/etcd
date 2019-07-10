@@ -36,8 +36,12 @@ type Cluster interface {
 	// MemberList lists the current cluster membership.
 	MemberList(ctx context.Context) (*MemberListResponse, error)
 
-	// MemberAdd adds a new member into the cluster.
-	MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
+	// MemberAddAsAutoPromoting adds a new member as a learner that is
+	// automatically promoted to a node upon catching up with the leader into the cluster.
+	MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
+
+	// MemberAddAsNode adds a new member as a node into the cluster.
+	MemberAddAsNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
 
 	// MemberAddAsLearner adds a new learner member into the cluster.
 	MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
@@ -73,23 +77,28 @@ func NewClusterFromClusterClient(remote pb.ClusterClient, c *Client) Cluster {
 	return api
 }
 
-func (c *cluster) MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, false)
+func (c *cluster) MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
+	return c.memberAdd(ctx, peerAddrs, true, true)
+}
+
+func (c *cluster) MemberAddAsNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
+	return c.memberAdd(ctx, peerAddrs, false, false)
 }
 
 func (c *cluster) MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, true)
+	return c.memberAdd(ctx, peerAddrs, true, false)
 }
 
-func (c *cluster) memberAdd(ctx context.Context, peerAddrs []string, isLearner bool) (*MemberAddResponse, error) {
+func (c *cluster) memberAdd(ctx context.Context, peerAddrs []string, isLearner bool, autoPromote bool) (*MemberAddResponse, error) {
 	// fail-fast before panic in rafthttp
 	if _, err := types.NewURLs(peerAddrs); err != nil {
 		return nil, err
 	}
 
 	r := &pb.MemberAddRequest{
-		PeerURLs:  peerAddrs,
-		IsLearner: isLearner,
+		PeerURLs:    peerAddrs,
+		IsLearner:   isLearner,
+		AutoPromote: autoPromote,
 	}
 	resp, err := c.remote.MemberAdd(ctx, r, c.callOpts...)
 	if err != nil {

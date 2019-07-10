@@ -27,6 +27,7 @@ import (
 var (
 	memberPeerURLs string
 	isLearner      bool
+	autoPromote    bool
 )
 
 // NewMemberCommand returns the cobra command for "member".
@@ -56,6 +57,7 @@ func NewMemberAddCommand() *cobra.Command {
 
 	cc.Flags().StringVar(&memberPeerURLs, "peer-urls", "", "comma separated peer URLs for the new member.")
 	cc.Flags().BoolVar(&isLearner, "learner", false, "indicates if the new member is raft learner")
+	cc.Flags().BoolVar(&autoPromote, "auto-promote", false, "indicates if the new learner member will be auto-promoted to voter")
 
 	return cc
 }
@@ -143,9 +145,13 @@ func memberAddCommandFunc(cmd *cobra.Command, args []string) {
 		err  error
 	)
 	if isLearner {
-		resp, err = cli.MemberAddAsLearner(ctx, urls)
+		if autoPromote {
+			resp, err = cli.MemberAddAsAutoPromotingNode(ctx, urls)
+		} else {
+			resp, err = cli.MemberAddAsLearner(ctx, urls)
+		}
 	} else {
-		resp, err = cli.MemberAdd(ctx, urls)
+		resp, err = cli.MemberAddAsNode(ctx, urls)
 	}
 	cancel()
 	if err != nil {

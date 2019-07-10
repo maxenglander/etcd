@@ -70,6 +70,12 @@ type Config struct {
 	// is caught up as soon as possible.
 	//
 	// NextLearners        map[uint64]struct{}
+
+	// An AutoPromotee is a Learner that is in the process of catching up with
+	// the leader. When an AutoPromotee has caught up with the leader, it is
+	// automatically promoted to a Voter. All members of AutoPromotees are also
+	// members of Learners, but not all Learners are also AutoPromotees.
+	AutoPromotees map[uint64]bool
 }
 
 func (c *Config) String() string {
@@ -106,7 +112,8 @@ func MakeProgressTracker(maxInflight int) ProgressTracker {
 				// in the common case.
 				quorum.MajorityConfig{},
 			},
-			Learners: map[uint64]struct{}{},
+			Learners:      map[uint64]struct{}{},
+			AutoPromotees: map[uint64]bool{},
 		},
 		Votes:    map[uint64]bool{},
 		Progress: map[uint64]*Progress{},
@@ -160,12 +167,13 @@ func (p *ProgressTracker) RemoveAny(id uint64) {
 	delete(p.Voters[0], id)
 	delete(p.Voters[1], id)
 	delete(p.Learners, id)
+	delete(p.AutoPromotees, id)
 	delete(p.Progress, id)
 }
 
 // InitProgress initializes a new progress for the given node or learner. The
 // node may not exist yet in either form or a panic will ensue.
-func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool) {
+func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool, autoPromote bool) {
 	if pr := p.Progress[id]; pr != nil {
 		panic(fmt.Sprintf("peer %x already tracked as node %v", id, pr))
 	}
@@ -173,8 +181,17 @@ func (p *ProgressTracker) InitProgress(id, match, next uint64, isLearner bool) {
 		p.Voters[0][id] = struct{}{}
 	} else {
 		p.Learners[id] = struct{}{}
+		if autoPromote {
+			p.AutoPromotees[id] = true
+		}
 	}
-	p.Progress[id] = &Progress{Next: next, Match: match, Inflights: NewInflights(p.MaxInflight), IsLearner: isLearner}
+	p.Progress[id] = &Progress{
+		Next:        next,
+		Match:       match,
+		Inflights:   NewInflights(p.MaxInflight),
+		IsLearner:   isLearner,
+		AutoPromote: autoPromote,
+	}
 }
 
 // Visit invokes the supplied closure for all tracked progresses.
@@ -213,6 +230,18 @@ func (p *ProgressTracker) VoterNodes() []uint64 {
 func (p *ProgressTracker) LearnerNodes() []uint64 {
 	nodes := make([]uint64, 0, len(p.Learners))
 	for id := range p.Learners {
+		nodes = append(nodes, id)
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
+	return nodes
+}
+
+// AutoPromotees returns a sorted slice of learners
+// that will be automatically promoted to voters
+// when caught up with the leader.
+func (p *ProgressTracker) AutoPromotingNodes() []uint64 {
+	nodes := make([]uint64, 0, len(p.AutoPromotees))
+	for id := range p.AutoPromotees {
 		nodes = append(nodes, id)
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })

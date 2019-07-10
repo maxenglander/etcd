@@ -269,6 +269,11 @@ type raft struct {
 	// isLearner is true if the local raft node is a learner.
 	isLearner bool
 
+	// autoPromote is true if the local raft node is a learner
+	// that should be automatically promoted to a voter once
+	// caught up with the leader.
+	autoPromote bool
+
 	msgs []pb.Message
 
 	// the leader id
@@ -356,11 +361,11 @@ func newRaft(c *Config) *raft {
 	}
 	for _, p := range peers {
 		// Add node to active config.
-		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, false /* isLearner */)
+		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, false /* isLearner */, false /* autoPromote */)
 	}
 	for _, p := range learners {
 		// Add learner to active config.
-		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, true /* isLearner */)
+		r.prs.InitProgress(p, 0 /* match */, 1 /* next */, true /* isLearner */, false /* autoPromote */)
 
 		if r.id == p {
 			r.isLearner = true
@@ -1394,6 +1399,9 @@ func (r *raft) restore(s pb.Snapshot) bool {
 	for _, id := range s.Metadata.ConfState.Learners {
 		r.applyConfChange(pb.ConfChange{NodeID: id, Type: pb.ConfChangeAddLearnerNode})
 	}
+	for _, id := range s.Metadata.ConfState.Learners {
+		r.applyConfChange(pb.ConfChange{NodeID: id, Type: pb.ConfChangeAddAutoPromotingNode})
+	}
 
 	pr := r.prs.Progress[r.id]
 	pr.MaybeUpdate(pr.Next - 1) // TODO(tbg): this is untested and likely unneeded
@@ -1401,6 +1409,15 @@ func (r *raft) restore(s pb.Snapshot) bool {
 	r.logger.Infof("%x [commit: %d, lastindex: %d, lastterm: %d] restored snapshot [index: %d, term: %d]",
 		r.id, r.raftLog.committed, r.raftLog.lastIndex(), r.raftLog.lastTerm(), s.Metadata.Index, s.Metadata.Term)
 	return true
+}
+
+func (r *raft) restoreAutoPromotingNode(nodes []uint64, autoPromote bool) {
+	for _, n := range nodes {
+		if n == r.id {
+			r.autoPromote = autoPromote
+		}
+		r.prs.Progress[n].AutoPromote = autoPromote
+	}
 }
 
 // promotable indicates whether state machine can be promoted to leader,
@@ -1411,12 +1428,12 @@ func (r *raft) promotable() bool {
 }
 
 func (r *raft) applyConfChange(cc pb.ConfChange) pb.ConfState {
-	addNodeOrLearnerNode := func(id uint64, isLearner bool) {
+	addNodeOrLearnerNode := func(id uint64, isLearner bool, autoPromote bool) {
 		// NB: this method is intentionally hidden from view. All mutations of
 		// the conf state must call applyConfChange directly.
 		pr := r.prs.Progress[id]
 		if pr == nil {
-			r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, isLearner)
+			r.prs.InitProgress(id, 0, r.raftLog.lastIndex()+1, isLearner, autoPromote)
 		} else {
 			if isLearner && !pr.IsLearner {
 				// Can only change Learner to Voter.
@@ -1434,8 +1451,9 @@ func (r *raft) applyConfChange(cc pb.ConfChange) pb.ConfState {
 
 			// Change Learner to Voter, use origin Learner progress.
 			r.prs.RemoveAny(id)
-			r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */)
+			r.prs.InitProgress(id, 0 /* match */, 1 /* next */, false /* isLearner */, false /* autoPromote */)
 			pr.IsLearner = false
+			pr.AutoPromote = false
 			*r.prs.Progress[id] = *pr
 		}
 
@@ -1449,9 +1467,11 @@ func (r *raft) applyConfChange(cc pb.ConfChange) pb.ConfState {
 	if cc.NodeID != None {
 		switch cc.Type {
 		case pb.ConfChangeAddNode:
-			addNodeOrLearnerNode(cc.NodeID, false /* isLearner */)
+			addNodeOrLearnerNode(cc.NodeID, false /* isLearner */, false /* autoPromote */)
 		case pb.ConfChangeAddLearnerNode:
-			addNodeOrLearnerNode(cc.NodeID, true /* isLearner */)
+			addNodeOrLearnerNode(cc.NodeID, true /* isLearner */, false /* autoPromote */)
+		case pb.ConfChangeAddAutoPromotingNode:
+			addNodeOrLearnerNode(cc.NodeID, true /* isLearner */, true /* autoPromote */)
 		case pb.ConfChangeRemoveNode:
 			removed++
 			r.prs.RemoveAny(cc.NodeID)

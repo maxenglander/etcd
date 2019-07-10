@@ -277,6 +277,8 @@ type EtcdServer struct {
 	leadElectedTime time.Time
 
 	*AccessController
+
+	autoPromotionInProgress bool
 }
 
 // NewServer creates a new EtcdServer from the supplied configuration. The
@@ -635,6 +637,32 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	return srv, nil
 }
 
+// Get one auto-promoting learner that is caught up with leader.
+func (s *EtcdServer) getAutoPromoteC() (ch <-chan uint64) {
+	if s.autoPromotionInProgress {
+		return nil
+	}
+
+	rs := s.raftStatus()
+
+	// leader's raftStatus.Progress is not nil
+	if rs.Progress == nil {
+		return nil
+	}
+
+	for memberID, progress := range rs.Progress {
+		if progress.IsLearner && progress.AutoPromote {
+			if err := s.isLearnerReady(memberID); err == nil {
+				pmch := make(chan uint64, 1)
+				pmch <- memberID
+				return pmch
+			}
+		}
+	}
+
+	return nil
+}
+
 func (s *EtcdServer) getLogger() *zap.Logger {
 	s.lgMu.RLock()
 	l := s.lg
@@ -919,7 +947,9 @@ func (s *EtcdServer) run() {
 	}
 
 	// asynchronously accept apply packets, dispatch progress in-order
-	sched := schedule.NewFIFOScheduler()
+	apSched := schedule.NewFIFOScheduler()
+	// asynchronously promote learners to voters, dispatch progress in-order
+	pmSched := schedule.NewFIFOScheduler()
 
 	var (
 		smu   sync.RWMutex
@@ -995,7 +1025,8 @@ func (s *EtcdServer) run() {
 		s.wgMu.Unlock()
 		s.cancel()
 
-		sched.Stop()
+		apSched.Stop()
+		pmSched.Stop()
 
 		// wait for gouroutines before closing raft so wal stays open
 		s.wg.Wait()
@@ -1035,7 +1066,7 @@ func (s *EtcdServer) run() {
 		select {
 		case ap := <-s.r.apply():
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
-			sched.Schedule(f)
+			apSched.Schedule(f)
 		case leases := <-expiredLeaseC:
 			s.goAttach(func() {
 				// Increases throughput of expired leases deletion process through parallelization
@@ -1083,6 +1114,10 @@ func (s *EtcdServer) run() {
 			}
 		case <-s.stop:
 			return
+		case pmID := <-s.getAutoPromoteC():
+			s.autoPromotionInProgress = true
+			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
+			pmSched.Schedule(f)
 		}
 	}
 }
@@ -1584,6 +1619,9 @@ func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*
 
 	if memb.IsLearner {
 		cc.Type = raftpb.ConfChangeAddLearnerNode
+		if memb.AutoPromote {
+			cc.Type = raftpb.ConfChangeAddAutoPromotingNode
+		}
 	}
 
 	return s.configure(ctx, cc)
@@ -1682,6 +1720,12 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 		return nil, ErrTimeout
 	}
 	return nil, ErrCanceled
+}
+
+func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
+	members, err := s.PromoteMember(ctx, id)
+	s.autoPromotionInProgress = false
+	return members, err
 }
 
 // promoteMember checks whether the to-be-promoted learner node is ready before sending the promote
@@ -2237,7 +2281,7 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 	lg := s.getLogger()
 	*confState = *s.r.ApplyConfChange(cc)
 	switch cc.Type {
-	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(membership.ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			if lg != nil {
@@ -2269,7 +2313,7 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 
 		// update the isLearner metric when this server id is equal to the id in raft member confChange
 		if confChangeContext.Member.ID == s.id {
-			if cc.Type == raftpb.ConfChangeAddLearnerNode {
+			if cc.Type == raftpb.ConfChangeAddLearnerNode || cc.Type == raftpb.ConfChangeAddAutoPromotingNode {
 				isLearner.Set(1)
 			} else {
 				isLearner.Set(0)

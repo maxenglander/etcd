@@ -54,7 +54,7 @@ func TestMemberAdd(t *testing.T) {
 	capi := clus.RandClient()
 
 	urls := []string{"http://127.0.0.1:1234"}
-	resp, err := capi.MemberAdd(context.Background(), urls)
+	resp, err := capi.MemberAddAsNode(context.Background(), urls)
 	if err != nil {
 		t.Fatalf("failed to add member %v", err)
 	}
@@ -78,7 +78,7 @@ func TestMemberAddWithExistingURLs(t *testing.T) {
 	}
 
 	existingURL := resp.Members[0].PeerURLs[0]
-	_, err = capi.MemberAdd(context.Background(), []string{existingURL})
+	_, err = capi.MemberAddAsNode(context.Background(), []string{existingURL})
 	expectedErrKeywords := "Peer URLs already exists"
 	if err == nil {
 		t.Fatalf("expecting add member to fail, got no error")
@@ -176,7 +176,7 @@ func TestMemberAddUpdateWrongURLs(t *testing.T) {
 		{"localhost:1234"},
 	}
 	for i := range tt {
-		_, err := capi.MemberAdd(context.Background(), tt[i])
+		_, err := capi.MemberAddAsNode(context.Background(), tt[i])
 		if err == nil {
 			t.Errorf("#%d: MemberAdd err = nil, but error", i)
 		}
@@ -412,7 +412,7 @@ func TestMaxLearnerInCluster(t *testing.T) {
 	}
 
 	// 4. cluster has 3 voting member and 1 learner, adding a voting member should succeed
-	_, err = clus.Client(0).MemberAdd(context.Background(), []string{"http://127.0.0.1:3456"})
+	_, err = clus.Client(0).MemberAddAsNode(context.Background(), []string{"http://127.0.0.1:3456"})
 	if err != nil {
 		t.Errorf("failed to add member %v", err)
 	}

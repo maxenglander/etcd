@@ -656,7 +656,7 @@ func TestApplyConfigChangeUpdatesConsistIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := membership.NewMember("", urls, "", &now)
+	m := membership.NewMemberAsNode("", urls, "", &now)
 	m.ID = types.ID(2)
 	b, err := json.Marshal(m)
 	if err != nil {
@@ -1586,23 +1586,23 @@ func TestGetOtherPeerURLs(t *testing.T) {
 	}{
 		{
 			[]*membership.Member{
-				membership.NewMember("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
+				membership.NewMemberAsNode("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
 			},
 			[]string{},
 		},
 		{
 			[]*membership.Member{
-				membership.NewMember("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
-				membership.NewMember("2", types.MustNewURLs([]string{"http://10.0.0.2:2"}), "a", nil),
-				membership.NewMember("3", types.MustNewURLs([]string{"http://10.0.0.3:3"}), "a", nil),
+				membership.NewMemberAsNode("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
+				membership.NewMemberAsNode("2", types.MustNewURLs([]string{"http://10.0.0.2:2"}), "a", nil),
+				membership.NewMemberAsNode("3", types.MustNewURLs([]string{"http://10.0.0.3:3"}), "a", nil),
 			},
 			[]string{"http://10.0.0.2:2", "http://10.0.0.3:3"},
 		},
 		{
 			[]*membership.Member{
-				membership.NewMember("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
-				membership.NewMember("3", types.MustNewURLs([]string{"http://10.0.0.3:3"}), "a", nil),
-				membership.NewMember("2", types.MustNewURLs([]string{"http://10.0.0.2:2"}), "a", nil),
+				membership.NewMemberAsNode("1", types.MustNewURLs([]string{"http://10.0.0.1:1"}), "a", nil),
+				membership.NewMemberAsNode("3", types.MustNewURLs([]string{"http://10.0.0.3:3"}), "a", nil),
+				membership.NewMemberAsNode("2", types.MustNewURLs([]string{"http://10.0.0.2:2"}), "a", nil),
 			},
 			[]string{"http://10.0.0.2:2", "http://10.0.0.3:3"},
 		},

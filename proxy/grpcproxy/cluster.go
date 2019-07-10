@@ -110,13 +110,25 @@ func (cp *clusterProxy) monitor(wa gnaming.Watcher) {
 
 func (cp *clusterProxy) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) (*pb.MemberAddResponse, error) {
 	if r.IsLearner {
+		if r.AutoPromote {
+			return cp.memberAddAsAutoPromotingNode(ctx, r.PeerURLs)
+		}
 		return cp.memberAddAsLearner(ctx, r.PeerURLs)
 	}
-	return cp.memberAdd(ctx, r.PeerURLs)
+	return cp.memberAddAsNode(ctx, r.PeerURLs)
 }
 
-func (cp *clusterProxy) memberAdd(ctx context.Context, peerURLs []string) (*pb.MemberAddResponse, error) {
-	mresp, err := cp.clus.MemberAdd(ctx, peerURLs)
+func (cp *clusterProxy) memberAddAsNode(ctx context.Context, peerURLs []string) (*pb.MemberAddResponse, error) {
+	mresp, err := cp.clus.MemberAddAsNode(ctx, peerURLs)
+	if err != nil {
+		return nil, err
+	}
+	resp := (pb.MemberAddResponse)(*mresp)
+	return &resp, err
+}
+
+func (cp *clusterProxy) memberAddAsAutoPromotingNode(ctx context.Context, peerURLs []string) (*pb.MemberAddResponse, error) {
+	mresp, err := cp.clus.MemberAddAsAutoPromotingNode(ctx, peerURLs)
 	if err != nil {
 		return nil, err
 	}
