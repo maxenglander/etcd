@@ -528,6 +528,29 @@ func TestClusterAddMemberAsLearner(t *testing.T) {
 	}
 }
 
+func TestClusterAddMemberAsAsAutoPromotingNode(t *testing.T) {
+	st := mockstore.NewRecorder()
+	c := newTestCluster(nil)
+	c.SetStore(st)
+	c.AddMember(newTestMemberAsAutoPromotingNode(1, nil, "node1", nil))
+
+	wactions := []testutil.Action{
+		{
+			Name: "Create",
+			Params: []interface{}{
+				path.Join(StoreMembersPrefix, "1", "raftAttributes"),
+				false,
+				`{"peerURLs":null,"isLearner":true,"autoPromote":true}`,
+				false,
+				v2store.TTLOptionSet{ExpireTime: v2store.Permanent},
+			},
+		},
+	}
+	if g := st.Action(); !reflect.DeepEqual(g, wactions) {
+		t.Errorf("actions = %v, want %v", g, wactions)
+	}
+}
+
 func TestClusterMembers(t *testing.T) {
 	cls := &RaftCluster{
 		members: map[types.ID]*Member{
@@ -709,6 +732,17 @@ func TestIsReadyToAddVotingMember(t *testing.T) {
 			true,
 		},
 		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMember(2, nil, "2", nil),
+				newTestMemberAsLearner(3, nil, "", nil),
+				newTestMemberAsAutoPromotingNode(4, nil, "", nil),
+			},
+			true,
+		},
+		{
 			// 1 voting member ready in cluster with 2 voting members and 2 ready learner member, should fail
 			// (the status of learner members does not affect the readiness of adding voting member)
 			[]*Member{
@@ -716,6 +750,17 @@ func TestIsReadyToAddVotingMember(t *testing.T) {
 				newTestMember(2, nil, "", nil),
 				newTestMemberAsLearner(3, nil, "3", nil),
 				newTestMemberAsLearner(4, nil, "4", nil),
+			},
+			false,
+		},
+		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMember(2, nil, "", nil),
+				newTestMemberAsLearner(3, nil, "3", nil),
+				newTestMemberAsAutoPromotingNode(4, nil, "4", nil),
 			},
 			false,
 		},
@@ -816,6 +861,16 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			false,
 		},
 		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMemberAsAutoPromotingNode(2, nil, "2", nil),
+			},
+			1,
+			false,
+		},
+		{
 			// 1 voting members ready in cluster with 2 voting member and 1 ready learner,
 			// removing ready voting member should fail
 			// (the status of learner members does not affect the readiness of removing voting member)
@@ -823,6 +878,17 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "", nil),
 				newTestMemberAsLearner(3, nil, "3", nil),
+			},
+			1,
+			false,
+		},
+		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMember(2, nil, "", nil),
+				newTestMemberAsAutoPromotingNode(3, nil, "3", nil),
 			},
 			1,
 			false,
@@ -840,6 +906,17 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			true,
 		},
 		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMember(2, nil, "", nil),
+				newTestMemberAsAutoPromotingNode(3, nil, "3", nil),
+			},
+			2,
+			true,
+		},
+		{
 			// 1 voting members ready in cluster with 2 voting member and 1 unstarted learner,
 			// removing not-ready voting member should be fine. (Actual operation will fail)
 			// (the status of learner members does not affect the readiness of removing voting member)
@@ -851,11 +928,22 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			2,
 			true,
 		},
+		{
+			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
+			// automatically promoted to voters.
+			[]*Member{
+				newTestMember(1, nil, "1", nil),
+				newTestMember(2, nil, "", nil),
+				newTestMemberAsAutoPromotingNode(3, nil, "", nil),
+			},
+			2,
+			true,
+		},
 	}
 	for i, tt := range tests {
 		c := newTestCluster(tt.members)
 		if got := c.IsReadyToRemoveVotingMember(tt.removeID); got != tt.want {
-			t.Errorf("%d: isReadyToAddNewMember returned %t, want %t", i, got, tt.want)
+			t.Errorf("%d: isReadyToRemoveVotingMember returned %t, want %t", i, got, tt.want)
 		}
 	}
 }

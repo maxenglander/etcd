@@ -63,9 +63,10 @@ func (cs *ClusterServer) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) 
 	return &pb.MemberAddResponse{
 		Header: cs.header(),
 		Member: &pb.Member{
-			ID:        uint64(m.ID),
-			PeerURLs:  m.PeerURLs,
-			IsLearner: m.IsLearner,
+			ID:          uint64(m.ID),
+			PeerURLs:    m.PeerURLs,
+			IsLearner:   m.IsLearner,
+			AutoPromote: m.AutoPromote,
 		},
 		Members: membersToProtoMembers(membs),
 	}, nil
@@ -112,11 +113,12 @@ func membersToProtoMembers(membs []*membership.Member) []*pb.Member {
 	protoMembs := make([]*pb.Member, len(membs))
 	for i := range membs {
 		protoMembs[i] = &pb.Member{
-			Name:       membs[i].Name,
-			ID:         uint64(membs[i].ID),
-			PeerURLs:   membs[i].PeerURLs,
-			ClientURLs: membs[i].ClientURLs,
-			IsLearner:  membs[i].IsLearner,
+			Name:        membs[i].Name,
+			ID:          uint64(membs[i].ID),
+			PeerURLs:    membs[i].PeerURLs,
+			ClientURLs:  membs[i].ClientURLs,
+			IsLearner:   membs[i].IsLearner,
+			AutoPromote: membs[i].AutoPromote,
 		}
 	}
 	return protoMembs
