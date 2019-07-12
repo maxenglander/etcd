@@ -216,6 +216,39 @@ func TestMemberAddForLearner(t *testing.T) {
 	}
 }
 
+func TestMemberAddForAutoPromotee(t *testing.T) {
+	defer testutil.AfterTest(t)
+
+	clus := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 3})
+	defer clus.Terminate(t)
+
+	capi := clus.RandClient()
+
+	urls := []string{"http://127.0.0.1:1234"}
+	resp, err := capi.MemberAddAsAutoPromotingNode(context.Background(), urls)
+	if err != nil {
+		t.Fatalf("failed to add member %v", err)
+	}
+
+	if !resp.Member.IsLearner {
+		t.Errorf("Added a member as auto-promoting node, got resp.Member.IsLearner = %v", resp.Member.IsLearner)
+	}
+
+	if !resp.Member.AutoPromote {
+		t.Errorf("Added a member as auto-promoting node, got resp.Member.AutoPromote = %v", resp.Member.AutoPromote)
+	}
+
+	numberOfAutoPromotees := 0
+	for _, m := range resp.Members {
+		if m.IsLearner && m.AutoPromote {
+			numberOfAutoPromotees++
+		}
+	}
+	if numberOfAutoPromotees != 1 {
+		t.Errorf("Added 1 auto-promoting node to cluster, got %d", numberOfAutoPromotees)
+	}
+}
+
 func TestMemberPromote(t *testing.T) {
 	defer testutil.AfterTest(t)
 

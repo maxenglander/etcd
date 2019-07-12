@@ -121,3 +121,11 @@ func newTestMemberAsLearner(id uint64, peerURLs []string, name string, clientURL
 		Attributes:     Attributes{Name: name, ClientURLs: clientURLs},
 	}
 }
+
+func newTestMemberAsAutoPromotingNode(id uint64, peerURLs []string, name string, clientURLs []string) *Member {
+	return &Member{
+		ID:             types.ID(id),
+		RaftAttributes: RaftAttributes{PeerURLs: peerURLs, IsLearner: true, AutoPromote: true},
+		Attributes:     Attributes{Name: name, ClientURLs: clientURLs},
+	}
+}
