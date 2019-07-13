@@ -411,6 +411,97 @@ func TestMemberPromoteMemberNotExist(t *testing.T) {
 	}
 }
 
+// Test that auto-promoting learners are automatically promoted to voters
+// upon catching up with the leader.
+func TestMemberAutoPromotion(t *testing.T) {
+	defer testutil.AfterTest(t)
+
+	clus := integration.NewClusterV3(t, &integration.ClusterConfig{Size: 3})
+	defer clus.Terminate(t)
+
+	// add auto-promoting member request can be sent to any server
+	// in cluster, the request will be auto-forwarded to leader on
+	// server-side. This test explicitly includes the server-side
+	// forwarding by sending the request to follower.
+	leaderIdx := clus.WaitLeader(t)
+	followerIdx := (leaderIdx + 1) % 3
+	capi := clus.Client(followerIdx)
+
+	urls := []string{"http://127.0.0.1:1234"}
+	memberAddResp, err := capi.MemberAddAsAutoPromotingNode(context.Background(), urls)
+	if err != nil {
+		t.Fatalf("failed to add auto-promoting member %v", err)
+	}
+
+	if !memberAddResp.Member.IsLearner {
+		t.Fatalf("Added a member as auto-promoting learner, got resp.Member.IsLearner = %v", memberAddResp.Member.IsLearner)
+	}
+	if !memberAddResp.Member.AutoPromote {
+		t.Fatalf("Added a member as auto-promoting learner, got resp.Member.AutoPromote = %v", memberAddResp.Member.AutoPromote)
+	}
+	autoPromotingLearnerID := memberAddResp.Member.ID
+
+	numberOfLearners := 0
+	for _, m := range memberAddResp.Members {
+		if m.IsLearner {
+			numberOfLearners++
+		}
+	}
+	if numberOfLearners != 1 {
+		t.Fatalf("Added 1 (auto-promoting) learner node to cluster, got %d learners", numberOfLearners)
+	}
+
+	// Verify that cluster stored new member as learner
+	foundMember := false
+	if memberList, err := capi.MemberList(context.Background()); err != nil {
+		t.Errorf("before launching member, failed to get member list: %v", err)
+	} else {
+		for _, member := range memberList.Members {
+			if member.ID == autoPromotingLearnerID {
+				foundMember = true
+				if member.IsLearner == false {
+					t.Errorf("expected new member %v to be stored as learner, but is stored as voter", autoPromotingLearnerID)
+				}
+			}
+		}
+	}
+	if foundMember == false {
+		t.Errorf("expected to find new member %v in member list, but new member was not found", autoPromotingLearnerID)
+	}
+
+	// create and launch auto-promoting learner member based on the response of V3 Member Add API.
+	// (the response has information on peer urls of the existing members in cluster)
+	autoPromotingLearnerMember := clus.MustNewMember(t, memberAddResp)
+	clus.Members = append(clus.Members, autoPromotingLearnerMember)
+	if err := autoPromotingLearnerMember.Launch(); err != nil {
+		t.Fatal(err)
+	}
+
+	// retry until auto-promote success or timeout
+	timeout := time.After(5 * time.Second)
+success:
+	for {
+		select {
+		case <-time.After(500 * time.Millisecond):
+		case <-timeout:
+			t.Errorf("auto-promoting learner member was not promoted, last error: %v", err)
+			break
+		}
+
+		if memberList, err := capi.MemberList(context.Background()); err != nil {
+			t.Errorf("while waiting for member auto-promote, failed to get member list: %v", err)
+		} else {
+			for _, member := range memberList.Members {
+				if member.ID == autoPromotingLearnerID {
+					if member.IsLearner == false {
+						break success
+					}
+				}
+			}
+		}
+	}
+}
+
 // TestMaxLearnerInCluster verifies that the maximum number of learners allowed in a cluster is 1
 func TestMaxLearnerInCluster(t *testing.T) {
 	defer testutil.AfterTest(t)
