@@ -76,9 +76,9 @@ type Progress struct {
 	// IsLearner is true if this progress is tracked for a learner.
 	IsLearner bool
 
-	// AutoPromote, when enabled for a learner, causes learner to be
-	// automatically promoted to a voter once it is caught up with
-	// the leader. AutoPromote has no effect when enabled for voters.
+	// AutoPromote enables a learner to beautomatically promoted to a
+	// voter once it is caught up with the leader. AutoPromote has no
+	// effect when enabled for voters.
 	AutoPromote bool
 }
 
