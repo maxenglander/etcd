@@ -636,13 +636,13 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 }
 
 // Get auto-promoting learner nodes that ahve caught up with leader.
-func (s *EtcdServer) getNextReadyAutoPromotingNodes() (error, []uint64) {
+func (s *EtcdServer) getNextReadyAutoPromotingNodes() ([]uint64, error) {
 	var readyAutoPromotingNodes []uint64
 	rs := s.raftStatus()
 
 	// leader's raftStatus.Progress is not nil
 	if rs.Progress == nil {
-		return fmt.Errorf("this server is not the leader"), readyAutoPromotingNodes
+		return nil, fmt.Errorf("this server is not the leader")
 	}
 
 	for memberID, progress := range rs.Progress {
@@ -653,7 +653,7 @@ func (s *EtcdServer) getNextReadyAutoPromotingNodes() (error, []uint64) {
 		}
 	}
 
-	return nil, readyAutoPromotingNodes
+	return readyAutoPromotingNodes, nil
 }
 
 func (s *EtcdServer) getLogger() *zap.Logger {
@@ -1057,7 +1057,7 @@ func (s *EtcdServer) run() {
 
 	for {
 		if pmSched.Pending()+pmSched.Scheduled() < 1 {
-			if err, pmIDs := s.getNextReadyAutoPromotingNodes(); err == nil {
+			if pmIDs, err := s.getNextReadyAutoPromotingNodes(); err == nil {
 				for _, pmID := range pmIDs {
 					f := func(c context.Context) {
 						s.autoPromoteMember(c, pmID)
