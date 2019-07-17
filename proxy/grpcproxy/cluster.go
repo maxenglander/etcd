@@ -119,7 +119,7 @@ func (cp *clusterProxy) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) (
 }
 
 func (cp *clusterProxy) memberAddAsNode(ctx context.Context, peerURLs []string) (*pb.MemberAddResponse, error) {
-	mresp, err := cp.clus.MemberAddAsNode(ctx, peerURLs)
+	mresp, err := cp.clus.MemberAdd(ctx, peerURLs)
 	if err != nil {
 		return nil, err
 	}

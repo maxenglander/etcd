@@ -36,12 +36,12 @@ type Cluster interface {
 	// MemberList lists the current cluster membership.
 	MemberList(ctx context.Context) (*MemberListResponse, error)
 
+	// MemberAdd adds a new member as a node into the cluster.
+	MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
+
 	// MemberAddAsAutoPromoting adds a new member as a learner that is
 	// automatically promoted to a node upon catching up with the leader into the cluster.
 	MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
-
-	// MemberAddAsNode adds a new member as a node into the cluster.
-	MemberAddAsNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
 
 	// MemberAddAsLearner adds a new learner member into the cluster.
 	MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
@@ -77,12 +77,12 @@ func NewClusterFromClusterClient(remote pb.ClusterClient, c *Client) Cluster {
 	return api
 }
 
-func (c *cluster) MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, true, true)
+func (c *cluster) MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
+	return c.memberAdd(ctx, peerAddrs, false, false)
 }
 
-func (c *cluster) MemberAddAsNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, false, false)
+func (c *cluster) MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
+	return c.memberAdd(ctx, peerAddrs, true, true)
 }
 
 func (c *cluster) MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {

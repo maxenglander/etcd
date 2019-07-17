@@ -151,7 +151,7 @@ func memberAddCommandFunc(cmd *cobra.Command, args []string) {
 			resp, err = cli.MemberAddAsLearner(ctx, urls)
 		}
 	} else {
-		resp, err = cli.MemberAddAsNode(ctx, urls)
+		resp, err = cli.MemberAdd(ctx, urls)
 	}
 	cancel()
 	if err != nil {
