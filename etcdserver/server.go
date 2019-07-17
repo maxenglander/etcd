@@ -277,8 +277,6 @@ type EtcdServer struct {
 	leadElectedTime time.Time
 
 	*AccessController
-
-	autoPromotionInProgress bool
 }
 
 // NewServer creates a new EtcdServer from the supplied configuration. The
@@ -637,30 +635,25 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	return srv, nil
 }
 
-// Get one auto-promoting learner that is caught up with leader.
-func (s *EtcdServer) getAutoPromoteC() (ch <-chan uint64) {
-	if s.autoPromotionInProgress {
-		return nil
-	}
-
+// Get auto-promoting learner nodes that ahve caught up with leader.
+func (s *EtcdServer) getNextReadyAutoPromotingNodes() (error, []uint64) {
+	var readyAutoPromotingNodes []uint64
 	rs := s.raftStatus()
 
 	// leader's raftStatus.Progress is not nil
 	if rs.Progress == nil {
-		return nil
+		return fmt.Errorf("this server is not the leader"), readyAutoPromotingNodes
 	}
 
 	for memberID, progress := range rs.Progress {
 		if progress.IsLearner && progress.AutoPromote {
 			if err := s.isLearnerReady(memberID); err == nil {
-				pmch := make(chan uint64, 1)
-				pmch <- memberID
-				return pmch
+				readyAutoPromotingNodes = append(readyAutoPromotingNodes, memberID)
 			}
 		}
 	}
 
-	return nil
+	return nil, readyAutoPromotingNodes
 }
 
 func (s *EtcdServer) getLogger() *zap.Logger {
@@ -1063,6 +1056,17 @@ func (s *EtcdServer) run() {
 	}
 
 	for {
+		if pmSched.Pending()+pmSched.Scheduled() < 1 {
+			if err, pmIDs := s.getNextReadyAutoPromotingNodes(); err == nil {
+				for _, pmID := range pmIDs {
+					f := func(c context.Context) {
+						s.autoPromoteMember(c, pmID)
+					}
+					pmSched.Schedule(f)
+				}
+			}
+		}
+
 		select {
 		case ap := <-s.r.apply():
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
@@ -1114,10 +1118,6 @@ func (s *EtcdServer) run() {
 			}
 		case <-s.stop:
 			return
-		case pmID := <-s.getAutoPromoteC():
-			s.autoPromotionInProgress = true
-			f := func(c context.Context) { s.autoPromoteMember(c, pmID) }
-			pmSched.Schedule(f)
 		}
 	}
 }
@@ -1724,7 +1724,6 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 
 func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
 	members, err := s.PromoteMember(ctx, id)
-	s.autoPromotionInProgress = false
 	return members, err
 }
 

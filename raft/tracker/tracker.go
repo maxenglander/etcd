@@ -213,7 +213,7 @@ func (p *ProgressTracker) LearnerNodes() []uint64 {
 	return nodes
 }
 
-// AutoPromotees returns a sorted slice of learners
+// AutoPromotingNodes returns a sorted slice of learners
 // that will be automatically promoted to voters
 // when caught up with the leader.
 func (p *ProgressTracker) AutoPromotingNodes() []uint64 {

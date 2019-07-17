@@ -54,7 +54,7 @@ type Member struct {
 	Attributes
 }
 
-// NewMember creates a node Member without an ID and generates one based on the
+// NewMemberAsNode creates a node Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
 func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
 	return newMember(name, peerURLs, clusterName, now, false /* isLearner */, false /* autoPromote */)
