@@ -10,15 +10,16 @@ This is a generated documentation. Please read the proto files for more.
 | ------ | ------------ | ------------- | ----------- |
 | AuthEnable | AuthEnableRequest | AuthEnableResponse | AuthEnable enables authentication. |
 | AuthDisable | AuthDisableRequest | AuthDisableResponse | AuthDisable disables authentication. |
+| AuthStatus | AuthStatusRequest | AuthStatusResponse | AuthStatus displays authentication status. |
 | Authenticate | AuthenticateRequest | AuthenticateResponse | Authenticate processes an authenticate request. |
-| UserAdd | AuthUserAddRequest | AuthUserAddResponse | UserAdd adds a new user. |
+| UserAdd | AuthUserAddRequest | AuthUserAddResponse | UserAdd adds a new user. User name cannot be empty. |
 | UserGet | AuthUserGetRequest | AuthUserGetResponse | UserGet gets detailed user information. |
 | UserList | AuthUserListRequest | AuthUserListResponse | UserList gets a list of all users. |
 | UserDelete | AuthUserDeleteRequest | AuthUserDeleteResponse | UserDelete deletes a specified user. |
 | UserChangePassword | AuthUserChangePasswordRequest | AuthUserChangePasswordResponse | UserChangePassword changes the password of a specified user. |
 | UserGrantRole | AuthUserGrantRoleRequest | AuthUserGrantRoleResponse | UserGrant grants a role to a specified user. |
 | UserRevokeRole | AuthUserRevokeRoleRequest | AuthUserRevokeRoleResponse | UserRevokeRole revokes a role of specified user. |
-| RoleAdd | AuthRoleAddRequest | AuthRoleAddResponse | RoleAdd adds a new role. |
+| RoleAdd | AuthRoleAddRequest | AuthRoleAddResponse | RoleAdd adds a new role. Role name cannot be empty. |
 | RoleGet | AuthRoleGetRequest | AuthRoleGetResponse | RoleGet gets detailed role information. |
 | RoleList | AuthRoleListRequest | AuthRoleListResponse | RoleList gets lists of all roles. |
 | RoleDelete | AuthRoleDeleteRequest | AuthRoleDeleteResponse | RoleDelete deletes a specified role. |
@@ -74,6 +75,7 @@ This is a generated documentation. Please read the proto files for more.
 | HashKV | HashKVRequest | HashKVResponse | HashKV computes the hash of all MVCC keys up to a given revision. It only iterates "key" bucket in backend storage. |
 | Snapshot | SnapshotRequest | SnapshotResponse | Snapshot sends a snapshot of the entire backend from a member over a stream to a client. |
 | MoveLeader | MoveLeaderRequest | MoveLeaderResponse | MoveLeader requests current leader node to transfer its leadership to transferee. |
+| Downgrade | DowngradeRequest | DowngradeResponse | Downgrade requests downgrade, cancel downgrade on the cluster version. |
 
 
 
@@ -237,6 +239,22 @@ Empty field.
 | Field | Description | Type |
 | ----- | ----------- | ---- |
 | header |  | ResponseHeader |
+
+
+
+##### message `AuthStatusRequest` (etcdserver/etcdserverpb/rpc.proto)
+
+Empty field.
+
+
+
+##### message `AuthStatusResponse` (etcdserver/etcdserverpb/rpc.proto)
+
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| header |  | ResponseHeader |
+| enabled |  | bool |
+| authRevision | authRevision is the current revision of auth store | uint64 |
 
 
 
@@ -445,6 +463,24 @@ Empty field.
 
 
 
+##### message `DowngradeRequest` (etcdserver/etcdserverpb/rpc.proto)
+
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| action | action is the kind of downgrade request to issue. The action may VALIDATE the target version, DOWNGRADE the cluster version, or CANCEL the current downgrading job. | DowngradeAction |
+| version | version is the target version to downgrade. | string |
+
+
+
+##### message `DowngradeResponse` (etcdserver/etcdserverpb/rpc.proto)
+
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| header |  | ResponseHeader |
+| version | version is the current cluster version. | string |
+
+
+
 ##### message `HashKVRequest` (etcdserver/etcdserverpb/rpc.proto)
 
 | Field | Description | Type |
@@ -610,6 +646,7 @@ Empty field.
 | peerURLs | peerURLs is the list of URLs the member exposes to the cluster for communication. | (slice of) string |
 | clientURLs | clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. | (slice of) string |
 | isLearner | isLearner indicates if the member is raft learner. | bool |
+| autoPromote | autoPromote indicates whether the learner should be automatically promoted to a node when it has caught up with the leader | bool |
 
 
 
@@ -619,6 +656,7 @@ Empty field.
 | ----- | ----------- | ---- |
 | peerURLs | peerURLs is the list of URLs the added member will use to communicate with the cluster. | (slice of) string |
 | isLearner | isLearner indicates if the added member is raft learner. | bool |
+| autoPromote | autoPromote indicates whether the added learner should be automatically promoted to a node when it has caught up with the leader | bool |
 
 
 
@@ -634,7 +672,9 @@ Empty field.
 
 ##### message `MemberListRequest` (etcdserver/etcdserverpb/rpc.proto)
 
-Empty field.
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| linearizable |  | bool |
 
 
 
@@ -839,6 +879,7 @@ Empty field.
 | errors | errors contains alarm/health information and status. | (slice of) string |
 | dbSizeInUse | dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. | int64 |
 | isLearner | isLearner indicates if the member is raft learner. | bool |
+| autoPromote | autoPromote indicates if learner is configured to be automatically promoted to a node upon catching up with the leader. | bool |
 
 
 

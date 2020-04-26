@@ -45,9 +45,6 @@ type RawNode struct {
 // state manually by setting up a Storage that has a first index > 1 and which
 // stores the desired ConfState as its InitialState.
 func NewRawNode(config *Config) (*RawNode, error) {
-	if config.ID == 0 {
-		panic("config.ID must not be zero")
-	}
 	r := newRaft(config)
 	rn := &RawNode{
 		raft: r,
@@ -101,7 +98,9 @@ func (rn *RawNode) ProposeConfChange(cc pb.ConfChangeI) error {
 	return rn.raft.Step(m)
 }
 
-// ApplyConfChange applies a config change to the local node.
+// ApplyConfChange applies a config change to the local node. The app must call
+// this when it applies a configuration change, except when it decides to reject
+// the configuration change, in which case no call must take place.
 func (rn *RawNode) ApplyConfChange(cc pb.ConfChangeI) *pb.ConfState {
 	cs := rn.raft.applyConfChange(cc.AsV2())
 	return &cs

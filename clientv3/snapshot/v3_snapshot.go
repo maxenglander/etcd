@@ -34,11 +34,13 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/membership"
 	"go.etcd.io/etcd/etcdserver/api/snap"
 	"go.etcd.io/etcd/etcdserver/api/v2store"
+	"go.etcd.io/etcd/etcdserver/cindex"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/lease"
 	"go.etcd.io/etcd/mvcc"
 	"go.etcd.io/etcd/mvcc/backend"
 	"go.etcd.io/etcd/pkg/fileutil"
+	"go.etcd.io/etcd/pkg/traceutil"
 	"go.etcd.io/etcd/pkg/types"
 	"go.etcd.io/etcd/raft"
 	"go.etcd.io/etcd/raft/raftpb"
@@ -266,8 +268,8 @@ func (s *v3Manager) Restore(cfg RestoreConfig) error {
 	if dataDir == "" {
 		dataDir = cfg.Name + ".etcd"
 	}
-	if fileutil.Exist(dataDir) {
-		return fmt.Errorf("data-dir %q exists", dataDir)
+	if fileutil.Exist(dataDir) && !fileutil.DirEmpty(dataDir) {
+		return fmt.Errorf("data-dir %q not empty or could not be read", dataDir)
 	}
 
 	walDir := cfg.OutputWALDir
@@ -383,8 +385,10 @@ func (s *v3Manager) saveDB() error {
 	// a lessor never timeouts leases
 	lessor := lease.NewLessor(s.lg, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
 
-	mvs := mvcc.NewStore(s.lg, be, lessor, (*initIndex)(&commit))
-	txn := mvs.Write()
+	ci := cindex.NewConsistentIndex(be.BatchTx())
+	ci.SetConsistentIndex(uint64(commit))
+	mvs := mvcc.NewStore(s.lg, be, lessor, ci, mvcc.StoreConfig{CompactionBatchLimit: math.MaxInt32})
+	txn := mvs.Write(traceutil.TODO())
 	btx := be.BatchTx()
 	del := func(k, v []byte) error {
 		txn.DeleteRange(k, nil)

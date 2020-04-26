@@ -237,6 +237,14 @@ service Maintenance {
         body: "*"
     };
   }
+
+  // Downgrade requests downgrade, cancel downgrade on the cluster version.
+  rpc Downgrade(DowngradeRequest) returns (DowngradeResponse) {
+    option (google.api.http) = {
+      post: "/v3/maintenance/downgrade"
+      body: "*"
+    };
+  }
 }
 
 service Auth {
@@ -256,6 +264,14 @@ service Auth {
     };
   }
 
+  // AuthStatus displays authentication status.
+  rpc AuthStatus(AuthStatusRequest) returns (AuthStatusResponse) {
+      option (google.api.http) = {
+        post: "/v3/auth/status"
+        body: "*"
+    };
+  }
+
   // Authenticate processes an authenticate request.
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse) {
       option (google.api.http) = {
@@ -264,7 +280,7 @@ service Auth {
     };
   }
 
-  // UserAdd adds a new user.
+  // UserAdd adds a new user. User name cannot be empty.
   rpc UserAdd(AuthUserAddRequest) returns (AuthUserAddResponse) {
       option (google.api.http) = {
         post: "/v3/auth/user/add"
@@ -320,7 +336,7 @@ service Auth {
     };
   }
 
-  // RoleAdd adds a new role.
+  // RoleAdd adds a new role. Role name cannot be empty.
   rpc RoleAdd(AuthRoleAddRequest) returns (AuthRoleAddResponse) {
       option (google.api.http) = {
         post: "/v3/auth/role/add"
@@ -845,6 +861,30 @@ message LeaseLeasesResponse {
   repeated LeaseStatus leases = 2;
 }
 
+message Monitor {
+  enum Op {
+    GREATER_EQUAL = 0;
+  }
+
+  enum Metric {
+    PROGRESS = 0;
+  }
+
+  Metric metric = 0;
+  Op op = 1;
+  uint64 threshold = 2;
+  uint64 delay = 3;
+}
+
+message PromoteRule {
+  enum TargetRole {
+    VOTER = 0;
+  }
+
+  TargetRole promoteTo = 0;
+  repeated Monitor monitors = 1;
+}
+
 message Member {
   // ID is the member ID for this member.
   uint64 ID = 1;
@@ -859,6 +899,8 @@ message Member {
   // autoPromote indicates whether the learner should be automatically promoted to a node
   // when it has caught up with the leader
   bool autoPromote = 6;
+  // promoteRules govern the automatic promotion of learner members.
+  repeated PromoteRule promoteRules = 7;
 }
 
 message MemberAddRequest {
@@ -869,6 +911,8 @@ message MemberAddRequest {
   // autoPromote indicates whether the added learner should be automatically promoted to a node
   // when it has caught up with the leader
   bool autoPromote = 3;
+  // promoteRules govern the automatic promotion of learner members.
+  repeated PromoteRule promoteRules = 4;
 }
 
 message MemberAddResponse {
@@ -904,6 +948,7 @@ message MemberUpdateResponse{
 }
 
 message MemberListRequest {
+  bool linearizable = 1;
 }
 
 message MemberListResponse {
@@ -975,6 +1020,27 @@ message AlarmResponse {
   repeated AlarmMember alarms = 2;
 }
 
+message DowngradeRequest {
+  enum DowngradeAction {
+    VALIDATE = 0;
+    ENABLE = 1;
+    CANCEL = 2;
+  }
+
+  // action is the kind of downgrade request to issue. The action may
+  // VALIDATE the target version, DOWNGRADE the cluster version,
+  // or CANCEL the current downgrading job.
+  DowngradeAction action = 1;
+  // version is the target version to downgrade.
+  string version = 2;
+}
+
+message DowngradeResponse {
+  ResponseHeader header = 1;
+  // version is the current cluster version.
+  string version = 2;
+}
+
 message StatusRequest {
 }
 
@@ -1007,6 +1073,9 @@ message AuthEnableRequest {
 }
 
 message AuthDisableRequest {
+}
+
+message AuthStatusRequest {
 }
 
 message AuthenticateRequest {
@@ -1086,6 +1155,13 @@ message AuthEnableResponse {
 
 message AuthDisableResponse {
   ResponseHeader header = 1;
+}
+
+message AuthStatusResponse {
+  ResponseHeader header = 1;
+  bool enabled = 2;
+  // authRevision is the current revision of auth store
+  uint64 authRevision = 3;
 }
 
 message AuthenticateResponse {

@@ -159,7 +159,6 @@ func TestAutoCompactionModeInvalid(t *testing.T) {
 	cfg := NewConfig()
 	cfg.Logger = "zap"
 	cfg.LogOutputs = []string{"/dev/null"}
-	cfg.Debug = false
 	cfg.AutoCompactionMode = "period"
 	err := cfg.Validate()
 	if err == nil {
@@ -178,9 +177,11 @@ func TestAutoCompactionModeParse(t *testing.T) {
 		{"revision", "1", false, 1},
 		{"revision", "1h", false, time.Hour},
 		{"revision", "a", true, 0},
+		{"revision", "-1", true, 0},
 		// periodic
 		{"periodic", "1", false, time.Hour},
 		{"periodic", "a", true, 0},
+		{"revision", "-1", true, 0},
 		// err mode
 		{"errmode", "1", false, 0},
 		{"errmode", "1h", false, time.Hour},

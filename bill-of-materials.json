@@ -27,20 +27,11 @@
 		]
 	},
 	{
-		"project": "github.com/coreos/go-systemd",
+		"project": "github.com/coreos/go-systemd/v22",
 		"licenses": [
 			{
 				"type": "Apache License 2.0",
 				"confidence": 0.9966703662597114
-			}
-		]
-	},
-	{
-		"project": "github.com/coreos/pkg/capnslog",
-		"licenses": [
-			{
-				"type": "Apache License 2.0",
-				"confidence": 1
 			}
 		]
 	},
@@ -67,7 +58,7 @@
 		"licenses": [
 			{
 				"type": "BSD 3-clause \"New\" or \"Revised\" License",
-				"confidence": 0.9090909090909091
+				"confidence": 0.9163346613545816
 			}
 		]
 	},
@@ -405,7 +396,7 @@
 		]
 	},
 	{
-		"project": "google.golang.org/genproto/googleapis/rpc/status",
+		"project": "google.golang.org/genproto",
 		"licenses": [
 			{
 				"type": "Apache License 2.0",

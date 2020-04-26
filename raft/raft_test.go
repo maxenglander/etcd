@@ -186,6 +186,10 @@ func TestUncommittedEntryLimit(t *testing.T) {
 	testEntry := pb.Entry{Data: []byte("testdata")}
 	maxEntrySize := maxEntries * PayloadSize(testEntry)
 
+	if n := PayloadSize(pb.Entry{Data: nil}); n != 0 {
+		t.Fatal("entry with no Data must have zero payload size")
+	}
+
 	cfg := newTestConfig(1, []uint64{1, 2, 3}, 5, 1, NewMemoryStorage())
 	cfg.MaxUncommittedEntriesSize = uint64(maxEntrySize)
 	cfg.MaxInflightMsgs = 2 * 1024 // avoid interference
@@ -244,10 +248,19 @@ func TestUncommittedEntryLimit(t *testing.T) {
 		t.Fatalf("proposal not dropped: %v", err)
 	}
 
+	// But we can always append an entry with no Data. This is used both for the
+	// leader's first empty entry and for auto-transitioning out of joint config
+	// states.
+	if err := r.Step(
+		pb.Message{From: 1, To: 1, Type: pb.MsgProp, Entries: []pb.Entry{{}}},
+	); err != nil {
+		t.Fatal(err)
+	}
+
 	// Read messages and reduce the uncommitted size as if we had committed
 	// these entries.
 	ms = r.readMessages()
-	if e := 1 * numFollowers; len(ms) != e {
+	if e := 2 * numFollowers; len(ms) != e {
 		t.Fatalf("expected %d messages, got %d", e, len(ms))
 	}
 	r.reduceUncommittedSize(propEnts)
@@ -378,16 +391,21 @@ func TestLearnerPromotion(t *testing.T) {
 	}
 }
 
-// TestLearnerCannotVote checks that a learner can't vote even it receives a valid Vote request.
-func TestLearnerCannotVote(t *testing.T) {
+// TestLearnerCanVote checks that a learner can vote when it receives a valid Vote request.
+// See (*raft).Step for why this is necessary and correct behavior.
+func TestLearnerCanVote(t *testing.T) {
 	n2 := newTestLearnerRaft(2, []uint64{1}, []uint64{2}, 10, 1, NewMemoryStorage())
 
 	n2.becomeFollower(1, None)
 
 	n2.Step(pb.Message{From: 1, To: 2, Term: 2, Type: pb.MsgVote, LogTerm: 11, Index: 11})
 
-	if len(n2.msgs) != 0 {
-		t.Errorf("expect learner not to vote, but received %v messages", n2.msgs)
+	if len(n2.msgs) != 1 {
+		t.Fatalf("expected exactly one message, not %+v", n2.msgs)
+	}
+	msg := n2.msgs[0]
+	if msg.Type != pb.MsgVoteResp && !msg.Reject {
+		t.Fatal("expected learner to not reject vote")
 	}
 }
 
@@ -3593,6 +3611,38 @@ func TestLeaderTransferRemoveNode(t *testing.T) {
 
 	lead.applyConfChange(pb.ConfChange{NodeID: 3, Type: pb.ConfChangeRemoveNode}.AsV2())
 
+	checkLeaderTransferState(t, lead, StateLeader, 1)
+}
+
+func TestLeaderTransferDemoteNode(t *testing.T) {
+	nt := newNetwork(nil, nil, nil)
+	nt.send(pb.Message{From: 1, To: 1, Type: pb.MsgHup})
+
+	nt.ignore(pb.MsgTimeoutNow)
+
+	lead := nt.peers[1].(*raft)
+
+	// The leadTransferee is demoted when leadship transferring.
+	nt.send(pb.Message{From: 3, To: 1, Type: pb.MsgTransferLeader})
+	if lead.leadTransferee != 3 {
+		t.Fatalf("wait transferring, leadTransferee = %v, want %v", lead.leadTransferee, 3)
+	}
+
+	lead.applyConfChange(pb.ConfChangeV2{
+		Changes: []pb.ConfChangeSingle{
+			{
+				Type:   pb.ConfChangeRemoveNode,
+				NodeID: 3,
+			},
+			{
+				Type:   pb.ConfChangeAddLearnerNode,
+				NodeID: 3,
+			},
+		},
+	})
+
+	// Make the Raft group commit the LeaveJoint entry.
+	lead.applyConfChange(pb.ConfChangeV2{})
 	checkLeaderTransferState(t, lead, StateLeader, 1)
 }
 

@@ -130,11 +130,11 @@ func TestNodePropose(t *testing.T) {
 		return nil
 	}
 
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	n := newNode(rn)
 	r := rn.raft
-	go n.run(rn)
+	go n.run()
 	if err := n.Campaign(context.TODO()); err != nil {
 		t.Fatal(err)
 	}
@@ -173,13 +173,13 @@ func TestNodeReadIndex(t *testing.T) {
 	}
 	wrs := []ReadState{{Index: uint64(1), RequestCtx: []byte("somedata")}}
 
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	n := newNode(rn)
 	r := rn.raft
 	r.readStates = wrs
 
-	go n.run(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 	for {
 		rd := <-n.Ready()
@@ -293,10 +293,11 @@ func TestNodeReadIndexToOldLeader(t *testing.T) {
 	if len(r1.msgs) != 2 {
 		t.Fatalf("len(r1.msgs) expected 1, got %d", len(r1.msgs))
 	}
-	readIndxMsg3 := raftpb.Message{From: 1, To: 3, Type: raftpb.MsgReadIndex, Entries: testEntries}
+	readIndxMsg3 := raftpb.Message{From: 2, To: 3, Type: raftpb.MsgReadIndex, Entries: testEntries}
 	if !reflect.DeepEqual(r1.msgs[0], readIndxMsg3) {
 		t.Fatalf("r1.msgs[0] expected %+v, got %+v", readIndxMsg3, r1.msgs[0])
 	}
+	readIndxMsg3 = raftpb.Message{From: 3, To: 3, Type: raftpb.MsgReadIndex, Entries: testEntries}
 	if !reflect.DeepEqual(r1.msgs[1], readIndxMsg3) {
 		t.Fatalf("r1.msgs[1] expected %+v, got %+v", readIndxMsg3, r1.msgs[1])
 	}
@@ -311,11 +312,11 @@ func TestNodeProposeConfig(t *testing.T) {
 		return nil
 	}
 
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	n := newNode(rn)
 	r := rn.raft
-	go n.run(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 	for {
 		rd := <-n.Ready()
@@ -350,10 +351,10 @@ func TestNodeProposeConfig(t *testing.T) {
 // TestNodeProposeAddDuplicateNode ensures that two proposes to add the same node should
 // not affect the later propose to add new node.
 func TestNodeProposeAddDuplicateNode(t *testing.T) {
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
-	go n.run(rn)
+	n := newNode(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 	rdyEntries := make([]raftpb.Entry, 0)
 	ticker := time.NewTicker(time.Millisecond * 100)
@@ -426,9 +427,9 @@ func TestNodeProposeAddDuplicateNode(t *testing.T) {
 // know who is the current leader; node will accept proposal when it knows
 // who is the current leader.
 func TestBlockProposal(t *testing.T) {
-	n := newNode()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, NewMemoryStorage())
-	go n.run(rn)
+	n := newNode(rn)
+	go n.run()
 	defer n.Stop()
 
 	errc := make(chan error, 1)
@@ -466,11 +467,11 @@ func TestNodeProposeWaitDropped(t *testing.T) {
 		return nil
 	}
 
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	n := newNode(rn)
 	r := rn.raft
-	go n.run(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 	for {
 		rd := <-n.Ready()
@@ -501,11 +502,11 @@ func TestNodeProposeWaitDropped(t *testing.T) {
 // TestNodeTick ensures that node.Tick() will increase the
 // elapsed of the underlying raft state machine.
 func TestNodeTick(t *testing.T) {
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	n := newNode(rn)
 	r := rn.raft
-	go n.run(rn)
+	go n.run()
 	elapsed := r.electionElapsed
 	n.Tick()
 
@@ -522,13 +523,12 @@ func TestNodeTick(t *testing.T) {
 // TestNodeStop ensures that node.Stop() blocks until the node has stopped
 // processing, and that it is idempotent
 func TestNodeStop(t *testing.T) {
-	n := newNode()
-	s := NewMemoryStorage()
-	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
+	rn := newTestRawNode(1, []uint64{1}, 10, 1, NewMemoryStorage())
+	n := newNode(rn)
 	donec := make(chan struct{})
 
 	go func() {
-		n.run(rn)
+		n.run()
 		close(donec)
 	}()
 
@@ -813,10 +813,10 @@ func TestIsHardStateEqual(t *testing.T) {
 func TestNodeProposeAddLearnerNode(t *testing.T) {
 	ticker := time.NewTicker(time.Millisecond * 100)
 	defer ticker.Stop()
-	n := newNode()
 	s := NewMemoryStorage()
 	rn := newTestRawNode(1, []uint64{1}, 10, 1, s)
-	go n.run(rn)
+	n := newNode(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 	stop := make(chan struct{})
 	done := make(chan struct{})
@@ -914,8 +914,8 @@ func TestCommitPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := newNode()
-	go n.run(rn)
+	n := newNode(rn)
+	go n.run()
 	n.Campaign(context.TODO())
 
 	rd := readyWithTimeout(&n)
@@ -1006,8 +1006,8 @@ func TestNodeCommitPaginationAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := newNode()
-	go n.run(rn)
+	n := newNode(rn)
+	go n.run()
 	defer n.Stop()
 
 	rd := readyWithTimeout(&n)
