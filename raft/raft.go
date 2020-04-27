@@ -1475,9 +1475,6 @@ func (r *raft) restore(s pb.Snapshot) bool {
 		// handling or the client corrupted the conf change.
 		panic(fmt.Sprintf("unable to restore config %+v: %s", cs, err))
 	}
-	for _, id := range s.Metadata.ConfState.AutoPromotees {
-		r.applyConfChange(pb.ConfChange{NodeID: id, Type: pb.ConfChangeAddAutoPromotingNode}.AsV2())
-	}
 
 	assertConfStatesEquivalent(r.logger, cs, r.switchToConfig(cfg, prs))
 

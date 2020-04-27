@@ -36,17 +36,17 @@ func TestMemberTime(t *testing.T) {
 		mem *Member
 		id  types.ID
 	}{
-		{NewMemberAsNode("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", nil), 14544069596553697298},
+		{NewMember("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", nil), 14544069596553697298},
 		// Same ID, different name (names shouldn't matter)
-		{NewMemberAsNode("memfoo", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", nil), 14544069596553697298},
+		{NewMember("memfoo", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", nil), 14544069596553697298},
 		// Same ID, different Time
-		{NewMemberAsNode("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", timeParse("1984-12-23T15:04:05Z")), 2448790162483548276},
+		{NewMember("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "", timeParse("1984-12-23T15:04:05Z")), 2448790162483548276},
 		// Different cluster name
-		{NewMemberAsNode("mcm1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "etcd", timeParse("1984-12-23T15:04:05Z")), 6973882743191604649},
-		{NewMemberAsNode("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.1:2379"}}, "", timeParse("1984-12-23T15:04:05Z")), 1466075294948436910},
+		{NewMember("mcm1", []url.URL{{Scheme: "http", Host: "10.0.0.8:2379"}}, "etcd", timeParse("1984-12-23T15:04:05Z")), 6973882743191604649},
+		{NewMember("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.1:2379"}}, "", timeParse("1984-12-23T15:04:05Z")), 1466075294948436910},
 		// Order shouldn't matter
-		{NewMemberAsNode("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.1:2379"}, {Scheme: "http", Host: "10.0.0.2:2379"}}, "", nil), 16552244735972308939},
-		{NewMemberAsNode("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.2:2379"}, {Scheme: "http", Host: "10.0.0.1:2379"}}, "", nil), 16552244735972308939},
+		{NewMember("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.1:2379"}, {Scheme: "http", Host: "10.0.0.2:2379"}}, "", nil), 16552244735972308939},
+		{NewMember("mem1", []url.URL{{Scheme: "http", Host: "10.0.0.2:2379"}, {Scheme: "http", Host: "10.0.0.1:2379"}}, "", nil), 16552244735972308939},
 	}
 	for i, tt := range tests {
 		if tt.mem.ID != tt.id {
@@ -122,10 +122,25 @@ func newTestMemberAsLearner(id uint64, peerURLs []string, name string, clientURL
 	}
 }
 
-func newTestMemberAsAutoPromotingNode(id uint64, peerURLs []string, name string, clientURLs []string) *Member {
+func newTestMemberAsLearnerWithPromoteRules(id uint64, peerURLs []string, name string, clientURLs []string, promoteRules []PromoteRule) *Member {
+	if len(promoteRules) == 0 {
+		promoteRules = []PromoteRule{
+			{
+				Auto: true,
+				Monitors: []Monitor{
+					{
+						Op:        GreaterEqual,
+						Type:      Progress,
+						Threshold: 90,
+						Delay:     0,
+					},
+				},
+			},
+		}
+	}
 	return &Member{
 		ID:             types.ID(id),
-		RaftAttributes: RaftAttributes{PeerURLs: peerURLs, IsLearner: true, AutoPromote: true},
-		Attributes:     Attributes{Name: name, ClientURLs: clientURLs},
+		RaftAttributes: RaftAttributes{PeerURLs: peerURLs, IsLearner: true},
+		Attributes:     Attributes{Name: name, ClientURLs: clientURLs, PromoteRules: promoteRules},
 	}
 }

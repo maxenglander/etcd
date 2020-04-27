@@ -22,12 +22,14 @@ import (
 
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/clientv3"
+	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 )
 
 var (
 	memberPeerURLs string
 	isLearner      bool
 	autoPromote    bool
+	minProgress    uint64
 )
 
 // NewMemberCommand returns the cobra command for "member".
@@ -57,7 +59,8 @@ func NewMemberAddCommand() *cobra.Command {
 
 	cc.Flags().StringVar(&memberPeerURLs, "peer-urls", "", "comma separated peer URLs for the new member.")
 	cc.Flags().BoolVar(&isLearner, "learner", false, "indicates if the new member is raft learner")
-	cc.Flags().BoolVar(&autoPromote, "auto-promote", false, "indicates if the new learner member will be auto-promoted to voter")
+	cc.Flags().BoolVar(&autoPromote, "auto-promote", false, "whether or not to automatically promote the member")
+	cc.Flags().Uint64Var(&minProgress, "min-progress", 90, "the minimum progress (0-100) this member must make before being automatically promoted")
 
 	return cc
 }
@@ -146,7 +149,21 @@ func memberAddCommandFunc(cmd *cobra.Command, args []string) {
 	)
 	if isLearner {
 		if autoPromote {
-			resp, err = cli.MemberAddAsAutoPromotingNode(ctx, urls)
+			rule := clientv3.MemberPromoteRule{
+				Auto: autoPromote,
+			}
+			if minProgress < 0 || minProgress > 100 {
+				ev := "--min-progress must be between 0 and 100"
+				ExitWithError(ExitBadArgs, errors.New(ev))
+			}
+			rule.Monitors = []*pb.MemberMonitor{
+				{
+					Op:        pb.MemberMonitor_GREATER_EQUAL,
+					Threshold: minProgress,
+					Type:      pb.MemberMonitor_PROGRESS,
+				},
+			}
+			resp, err = cli.MemberAddAsLearnerWithPromoteRules(ctx, urls, []clientv3.MemberPromoteRule{rule})
 		} else {
 			resp, err = cli.MemberAddAsLearner(ctx, urls)
 		}

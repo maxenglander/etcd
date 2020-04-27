@@ -124,7 +124,6 @@ enum ConfChangeType {
 	ConfChangeRemoveNode           = 1;
 	ConfChangeUpdateNode           = 2;
 	ConfChangeAddLearnerNode       = 3;
-	ConfChangeAddAutoPromotingNode = 4;
 }
 
 message ConfChange {

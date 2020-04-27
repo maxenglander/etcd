@@ -77,11 +77,6 @@ type Progress struct {
 
 	// IsLearner is true if this progress is tracked for a learner.
 	IsLearner bool
-
-	// AutoPromote enables a learner to beautomatically promoted to a
-	// voter once it is caught up with the leader. AutoPromote has no
-	// effect when enabled for voters.
-	AutoPromote bool
 }
 
 // ResetState moves the Progress into the specified State, resetting ProbeSent,

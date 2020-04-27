@@ -528,11 +528,12 @@ func TestClusterAddMemberAsLearner(t *testing.T) {
 	}
 }
 
-func TestClusterAddMemberAsAsAutoPromotingNode(t *testing.T) {
+func TestClusterAddMemberAsLearnerWithPromoteRules(t *testing.T) {
 	st := mockstore.NewRecorder()
 	c := newTestCluster(nil)
 	c.SetStore(st)
-	c.AddMember(newTestMemberAsAutoPromotingNode(1, nil, "node1", nil))
+
+	c.AddMember(newTestMemberAsLearnerWithPromoteRules(1, nil, "node1", nil, nil))
 
 	wactions := []testutil.Action{
 		{
@@ -540,7 +541,7 @@ func TestClusterAddMemberAsAsAutoPromotingNode(t *testing.T) {
 			Params: []interface{}{
 				path.Join(StoreMembersPrefix, "1", "raftAttributes"),
 				false,
-				`{"peerURLs":null,"isLearner":true,"autoPromote":true}`,
+				`{"peerURLs":null,"isLearner":true}`,
 				false,
 				v2store.TTLOptionSet{ExpireTime: v2store.Permanent},
 			},
@@ -730,13 +731,11 @@ func TestIsReadyToAddVotingMember(t *testing.T) {
 			true,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "2", nil),
 				newTestMemberAsLearner(3, nil, "", nil),
-				newTestMemberAsAutoPromotingNode(4, nil, "", nil),
+				newTestMemberAsLearnerWithPromoteRules(4, nil, "", nil, nil),
 			},
 			true,
 		},
@@ -752,13 +751,11 @@ func TestIsReadyToAddVotingMember(t *testing.T) {
 			false,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "", nil),
 				newTestMemberAsLearner(3, nil, "3", nil),
-				newTestMemberAsAutoPromotingNode(4, nil, "4", nil),
+				newTestMemberAsLearnerWithPromoteRules(4, nil, "4", nil, nil),
 			},
 			false,
 		},
@@ -859,11 +856,9 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			false,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
-				newTestMemberAsAutoPromotingNode(2, nil, "2", nil),
+				newTestMemberAsLearnerWithPromoteRules(2, nil, "2", nil, nil),
 			},
 			1,
 			false,
@@ -881,12 +876,10 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			false,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "", nil),
-				newTestMemberAsAutoPromotingNode(3, nil, "3", nil),
+				newTestMemberAsLearnerWithPromoteRules(3, nil, "3", nil, nil),
 			},
 			1,
 			false,
@@ -904,12 +897,10 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			true,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "", nil),
-				newTestMemberAsAutoPromotingNode(3, nil, "3", nil),
+				newTestMemberAsLearnerWithPromoteRules(3, nil, "3", nil, nil),
 			},
 			2,
 			true,
@@ -927,12 +918,10 @@ func TestIsReadyToRemoveVotingMember(t *testing.T) {
 			true,
 		},
 		{
-			// Test should behave the same way as previous test: auto-promoting nodes are learners that are
-			// automatically promoted to voters.
 			[]*Member{
 				newTestMember(1, nil, "1", nil),
 				newTestMember(2, nil, "", nil),
-				newTestMemberAsAutoPromotingNode(3, nil, "", nil),
+				newTestMemberAsLearnerWithPromoteRules(3, nil, "", nil, nil),
 			},
 			2,
 			true,

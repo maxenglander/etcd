@@ -22,6 +22,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"go.etcd.io/etcd/etcdserver/api/membership"
+	membershippb "go.etcd.io/etcd/etcdserver/api/membership/membershippb"
 	"go.etcd.io/etcd/etcdserver/api/rafthttp"
 	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
@@ -170,4 +171,32 @@ func warnOfExpensiveGenericRequest(lg *zap.Logger, now time.Time, reqStringer fm
 
 func isNil(msg proto.Message) bool {
 	return msg == nil || reflect.ValueOf(msg).IsNil()
+}
+
+func promoteRulesToProtoPromoteRules(promoteRules []membership.PromoteRule) []*membershippb.MemberPromoteRule {
+	rules := make([]*membershippb.MemberPromoteRule, len(promoteRules))
+	for idx, rule := range promoteRules {
+		monitors := make([]*membershippb.MemberMonitor, len(rule.Monitors))
+		for idx, monitor := range rule.Monitors {
+			monitors[idx] = &membershippb.MemberMonitor{
+				Delay:     monitor.Delay,
+				Threshold: monitor.Threshold,
+			}
+			switch monitor.Op {
+			case membership.GreaterEqual:
+				monitors[idx].Op = membershippb.MemberMonitor_GREATER_EQUAL
+				break
+			}
+			switch monitor.Type {
+			case membership.Progress:
+				monitors[idx].Type = membershippb.MemberMonitor_PROGRESS
+				break
+			}
+		}
+		rules[idx] = &membershippb.MemberPromoteRule{
+			Auto:     rule.Auto,
+			Monitors: monitors,
+		}
+	}
+	return rules
 }

@@ -75,9 +75,6 @@ type Config struct {
 	// right away when entering the joint configuration, so that it is caught up
 	// as soon as possible.
 	LearnersNext map[uint64]struct{}
-
-	AutoPromotees     map[uint64]struct{}
-	AutoPromoteesNext map[uint64]struct{}
 }
 
 func (c Config) String() string {
@@ -88,12 +85,6 @@ func (c Config) String() string {
 	}
 	if c.LearnersNext != nil {
 		fmt.Fprintf(&buf, " learners_next=%s", quorum.MajorityConfig(c.LearnersNext).String())
-	}
-	if c.AutoPromotees != nil {
-		fmt.Fprintf(&buf, " auto_promotees=%s", quorum.MajorityConfig(c.AutoPromotees).String())
-	}
-	if c.AutoPromoteesNext != nil {
-		fmt.Fprintf(&buf, " auto_promotees_next=%s", quorum.MajorityConfig(c.AutoPromoteesNext).String())
 	}
 	if c.AutoLeave {
 		fmt.Fprintf(&buf, " autoleave")
@@ -114,11 +105,9 @@ func (c *Config) Clone() Config {
 		return mm
 	}
 	return Config{
-		Voters:            quorum.JointConfig{clone(c.Voters[0]), clone(c.Voters[1])},
-		Learners:          clone(c.Learners),
-		LearnersNext:      clone(c.LearnersNext),
-		AutoPromotees:     clone(c.AutoPromotees),
-		AutoPromoteesNext: clone(c.AutoPromoteesNext),
+		Voters:       quorum.JointConfig{clone(c.Voters[0]), clone(c.Voters[1])},
+		Learners:     clone(c.Learners),
+		LearnersNext: clone(c.LearnersNext),
 	}
 }
 
@@ -144,10 +133,8 @@ func MakeProgressTracker(maxInflight int) ProgressTracker {
 				quorum.MajorityConfig{},
 				nil, // only populated when used
 			},
-			Learners:          nil, // only populated when used
-			LearnersNext:      nil, // only populated when used
-			AutoPromotees:     nil, // only populated when used
-			AutoPromoteesNext: nil, // only populated when used
+			Learners:     nil, // only populated when used
+			LearnersNext: nil, // only populated when used
 		},
 		Votes:    map[uint64]bool{},
 		Progress: map[uint64]*Progress{},
@@ -255,18 +242,6 @@ func (p *ProgressTracker) LearnerNodes() []uint64 {
 	}
 	nodes := make([]uint64, 0, len(p.Learners))
 	for id := range p.Learners {
-		nodes = append(nodes, id)
-	}
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
-	return nodes
-}
-
-// AutoPromotingNodes returns a sorted slice of learners
-// that will be automatically promoted to voters
-// when caught up with the leader.
-func (p *ProgressTracker) AutoPromotingNodes() []uint64 {
-	nodes := make([]uint64, 0, len(p.AutoPromotees))
-	for id := range p.AutoPromotees {
 		nodes = append(nodes, id)
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })

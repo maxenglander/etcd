@@ -643,7 +643,7 @@
         "tags": [
           "Cluster"
         ],
-        "summary": "MemberPromote promotes a member from raft learner (non-voting) to raft voting member.",
+        "summary": "MemberPromote promotes a member from raft non-voting member to raft voting member.",
         "operationId": "Cluster_MemberPromote",
         "parameters": [
           {
@@ -1508,6 +1508,13 @@
         "DELETE"
       ]
     },
+    "MemberMonitorOp": {
+      "type": "string",
+      "default": "GREATER_EQUAL",
+      "enum": [
+        "GREATER_EQUAL"
+      ]
+    },
     "RangeRequestSortOrder": {
       "type": "string",
       "default": "NONE",
@@ -2303,11 +2310,6 @@
           "type": "string",
           "format": "uint64"
         },
-        "autoPromote": {
-          "type": "boolean",
-          "format": "boolean",
-          "title": "autoPromote indicates whether the learner should be automatically promoted to a node\nwhen it has caught up with the leader"
-        },
         "clientURLs": {
           "description": "clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty.",
           "type": "array",
@@ -2330,17 +2332,19 @@
           "items": {
             "type": "string"
           }
+        },
+        "promoteRules": {
+          "description": "promoteRules govern the automatic promotion of learner members.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/etcdserverpbMemberPromoteRule"
+          }
         }
       }
     },
     "etcdserverpbMemberAddRequest": {
       "type": "object",
       "properties": {
-        "autoPromote": {
-          "type": "boolean",
-          "format": "boolean",
-          "title": "autoPromote indicates whether the added learner should be automatically promoted to a node\nwhen it has caught up with the leader"
-        },
         "isLearner": {
           "description": "isLearner indicates if the added member is raft learner.",
           "type": "boolean",
@@ -2351,6 +2355,13 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        },
+        "promoteRules": {
+          "description": "promoteRules govern the automatic promotion of learner members.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/etcdserverpbMemberPromoteRule"
           }
         }
       }
@@ -2398,6 +2409,32 @@
         }
       }
     },
+    "etcdserverpbMemberMonitor": {
+      "type": "object",
+      "properties": {
+        "delay": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "op": {
+          "$ref": "#/definitions/MemberMonitorOp"
+        },
+        "threshold": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "type": {
+          "$ref": "#/definitions/etcdserverpbMemberMonitorType"
+        }
+      }
+    },
+    "etcdserverpbMemberMonitorType": {
+      "type": "string",
+      "default": "PROGRESS",
+      "enum": [
+        "PROGRESS"
+      ]
+    },
     "etcdserverpbMemberPromoteRequest": {
       "type": "object",
       "properties": {
@@ -2419,6 +2456,21 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/etcdserverpbMember"
+          }
+        }
+      }
+    },
+    "etcdserverpbMemberPromoteRule": {
+      "type": "object",
+      "properties": {
+        "auto": {
+          "type": "boolean",
+          "format": "boolean"
+        },
+        "monitors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/etcdserverpbMemberMonitor"
           }
         }
       }
@@ -2725,11 +2777,6 @@
     "etcdserverpbStatusResponse": {
       "type": "object",
       "properties": {
-        "autoPromote": {
-          "description": "autoPromote indicates if learner is configured to be automatically promoted\nto a node upon catching up with the leader.",
-          "type": "boolean",
-          "format": "boolean"
-        },
         "dbSize": {
           "description": "dbSize is the size of the backend database physically allocated, in bytes, of the responding member.",
           "type": "string",

@@ -27,6 +27,7 @@ type (
 	Member                pb.Member
 	MemberListResponse    pb.MemberListResponse
 	MemberAddResponse     pb.MemberAddResponse
+	MemberPromoteRule     pb.MemberPromoteRule
 	MemberRemoveResponse  pb.MemberRemoveResponse
 	MemberUpdateResponse  pb.MemberUpdateResponse
 	MemberPromoteResponse pb.MemberPromoteResponse
@@ -39,12 +40,13 @@ type Cluster interface {
 	// MemberAdd adds a new member as a node into the cluster.
 	MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
 
-	// MemberAddAsAutoPromotingNode adds a new member as a learner that is
-	// automatically promoted to a node upon catching up with the leader into the cluster.
-	MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
-
 	// MemberAddAsLearner adds a new learner member into the cluster.
 	MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error)
+
+	// MemberAddAsLearnerWithPromoteRules adds a new member as a learner
+	// which promotion rules which govern whether the member may be
+	// manually or automatically promoted.
+	MemberAddAsLearnerWithPromoteRules(ctx context.Context, peerAddrs []string, promoteRules []MemberPromoteRule) (*MemberAddResponse, error)
 
 	// MemberRemove removes an existing member from the cluster.
 	MemberRemove(ctx context.Context, id uint64) (*MemberRemoveResponse, error)
@@ -52,7 +54,7 @@ type Cluster interface {
 	// MemberUpdate updates the peer addresses of the member.
 	MemberUpdate(ctx context.Context, id uint64, peerAddrs []string) (*MemberUpdateResponse, error)
 
-	// MemberPromote promotes a member from raft learner (non-voting) to raft voting member.
+	// MemberPromote promotes a member from raft non-voting member to raft voting member.
 	MemberPromote(ctx context.Context, id uint64) (*MemberPromoteResponse, error)
 }
 
@@ -78,27 +80,32 @@ func NewClusterFromClusterClient(remote pb.ClusterClient, c *Client) Cluster {
 }
 
 func (c *cluster) MemberAdd(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, false, false)
+	return c.memberAdd(ctx, peerAddrs, false, []MemberPromoteRule{})
 }
 
-func (c *cluster) MemberAddAsAutoPromotingNode(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, true, true)
+func (c *cluster) MemberAddAsLearnerWithPromoteRules(ctx context.Context, peerAddrs []string, promoteRules []MemberPromoteRule) (*MemberAddResponse, error) {
+	return c.memberAdd(ctx, peerAddrs, true, promoteRules)
 }
 
 func (c *cluster) MemberAddAsLearner(ctx context.Context, peerAddrs []string) (*MemberAddResponse, error) {
-	return c.memberAdd(ctx, peerAddrs, true, false)
+	return c.memberAdd(ctx, peerAddrs, true, []MemberPromoteRule{})
 }
 
-func (c *cluster) memberAdd(ctx context.Context, peerAddrs []string, isLearner bool, autoPromote bool) (*MemberAddResponse, error) {
+func (c *cluster) memberAdd(ctx context.Context, peerAddrs []string, isLearner bool, promoteRules []MemberPromoteRule) (*MemberAddResponse, error) {
 	// fail-fast before panic in rafthttp
 	if _, err := types.NewURLs(peerAddrs); err != nil {
 		return nil, err
 	}
 
+	pbRules := make([]*pb.MemberPromoteRule, len(promoteRules))
+	for i, rule := range promoteRules {
+		pbRules[i] = (*pb.MemberPromoteRule)(&rule)
+	}
+
 	r := &pb.MemberAddRequest{
-		PeerURLs:    peerAddrs,
-		IsLearner:   isLearner,
-		AutoPromote: autoPromote,
+		PeerURLs:     peerAddrs,
+		IsLearner:    isLearner,
+		PromoteRules: pbRules,
 	}
 	resp, err := c.remote.MemberAdd(ctx, r, c.callOpts...)
 	if err != nil {

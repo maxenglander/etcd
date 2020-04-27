@@ -108,12 +108,6 @@ func (c Changer) LeaveJoint() (tracker.Config, tracker.ProgressMap, error) {
 	}
 	cfg.LearnersNext = nil
 
-	for id := range cfg.AutoPromoteesNext {
-		nilAwareAdd(&cfg.AutoPromotees, id)
-		prs[id].AutoPromote = true
-	}
-	cfg.AutoPromoteesNext = nil
-
 	for id := range outgoing(cfg.Voters) {
 		_, isVoter := incoming(cfg.Voters)[id]
 		_, isLearner := cfg.Learners[id]
@@ -168,8 +162,6 @@ func (c Changer) apply(cfg *tracker.Config, prs tracker.ProgressMap, ccs ...pb.C
 			c.makeVoter(cfg, prs, cc.NodeID)
 		case pb.ConfChangeAddLearnerNode:
 			c.makeLearner(cfg, prs, cc.NodeID)
-		case pb.ConfChangeAddAutoPromotingNode:
-			c.makeAutoPromotee(cfg, prs, cc.NodeID)
 		case pb.ConfChangeRemoveNode:
 			c.remove(cfg, prs, cc.NodeID)
 		case pb.ConfChangeUpdateNode:
@@ -188,7 +180,7 @@ func (c Changer) apply(cfg *tracker.Config, prs tracker.ProgressMap, ccs ...pb.C
 func (c Changer) makeVoter(cfg *tracker.Config, prs tracker.ProgressMap, id uint64) {
 	pr := prs[id]
 	if pr == nil {
-		c.initProgress(cfg, prs, id, false /* isLearner */, false /* autoPromote */)
+		c.initProgress(cfg, prs, id, false /* isLearner */)
 		return
 	}
 
@@ -213,16 +205,12 @@ func (c Changer) makeVoter(cfg *tracker.Config, prs tracker.ProgressMap, id uint
 // be added to Learners the moment the outgoing config is removed by
 // LeaveJoint().
 func (c Changer) makeLearner(cfg *tracker.Config, prs tracker.ProgressMap, id uint64) {
-	c.makeLearnerOrAutoPromotee(cfg, prs, id, false /* autoPromote */)
-}
-
-func (c Changer) makeLearnerOrAutoPromotee(cfg *tracker.Config, prs tracker.ProgressMap, id uint64, autoPromote bool) {
 	pr := prs[id]
 	if pr == nil {
-		c.initProgress(cfg, prs, id, true /* isLearner */, autoPromote)
+		c.initProgress(cfg, prs, id, true /* isLearner */)
 		return
 	}
-	if pr.IsLearner && pr.AutoPromote == autoPromote {
+	if pr.IsLearner {
 		return
 	}
 	// Remove any existing voter in the incoming config...
@@ -236,21 +224,10 @@ func (c Changer) makeLearnerOrAutoPromotee(cfg *tracker.Config, prs tracker.Prog
 	// Otherwise, add a regular learner right away.
 	if _, onRight := outgoing(cfg.Voters)[id]; onRight {
 		nilAwareAdd(&cfg.LearnersNext, id)
-		if autoPromote {
-			nilAwareAdd(&cfg.AutoPromoteesNext, id)
-		}
 	} else {
 		pr.IsLearner = true
-		pr.AutoPromote = autoPromote
 		nilAwareAdd(&cfg.Learners, id)
-		if autoPromote {
-			nilAwareAdd(&cfg.AutoPromotees, id)
-		}
 	}
-}
-
-func (c Changer) makeAutoPromotee(cfg *tracker.Config, prs tracker.ProgressMap, id uint64) {
-	c.makeLearnerOrAutoPromotee(cfg, prs, id, true /* autoPromote */)
 }
 
 // remove this peer as a voter or learner from the incoming config.
@@ -262,8 +239,6 @@ func (c Changer) remove(cfg *tracker.Config, prs tracker.ProgressMap, id uint64)
 	delete(incoming(cfg.Voters), id)
 	nilAwareDelete(&cfg.Learners, id)
 	nilAwareDelete(&cfg.LearnersNext, id)
-	nilAwareDelete(&cfg.AutoPromotees, id)
-	nilAwareDelete(&cfg.AutoPromoteesNext, id)
 
 	// If the peer is still a voter in the outgoing config, keep the Progress.
 	if _, onRight := outgoing(cfg.Voters)[id]; !onRight {
@@ -272,14 +247,11 @@ func (c Changer) remove(cfg *tracker.Config, prs tracker.ProgressMap, id uint64)
 }
 
 // initProgress initializes a new progress for the given node or learner.
-func (c Changer) initProgress(cfg *tracker.Config, prs tracker.ProgressMap, id uint64, isLearner bool, autoPromote bool) {
+func (c Changer) initProgress(cfg *tracker.Config, prs tracker.ProgressMap, id uint64, isLearner bool) {
 	if !isLearner {
 		incoming(cfg.Voters)[id] = struct{}{}
 	} else {
 		nilAwareAdd(&cfg.Learners, id)
-		if autoPromote {
-			nilAwareAdd(&cfg.AutoPromotees, id)
-		}
 	}
 	prs[id] = &tracker.Progress{
 		// Initializing the Progress with the last index means that the follower
@@ -290,11 +262,10 @@ func (c Changer) initProgress(cfg *tracker.Config, prs tracker.ProgressMap, id u
 		// at all (and will thus likely need a snapshot), though the app may
 		// have applied a snapshot out of band before adding the replica (thus
 		// making the first index the better choice).
-		Next:        c.LastIndex,
-		Match:       0,
-		Inflights:   tracker.NewInflights(c.Tracker.MaxInflight),
-		IsLearner:   isLearner,
-		AutoPromote: autoPromote,
+		Next:      c.LastIndex,
+		Match:     0,
+		Inflights: tracker.NewInflights(c.Tracker.MaxInflight),
+		IsLearner: isLearner,
 		// When a node is first added, we should mark it as recently active.
 		// Otherwise, CheckQuorum may cause us to step down if it is invoked
 		// before the added node has had a chance to communicate with us.

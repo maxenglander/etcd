@@ -166,7 +166,7 @@ service Cluster {
     };
   }
 
-  // MemberPromote promotes a member from raft learner (non-voting) to raft voting member.
+  // MemberPromote promotes a member from raft non-voting member to raft voting member.
   rpc MemberPromote(MemberPromoteRequest) returns (MemberPromoteResponse) {
       option (google.api.http) = {
         post: "/v3/cluster/member/promote"
@@ -861,29 +861,26 @@ message LeaseLeasesResponse {
   repeated LeaseStatus leases = 2;
 }
 
-message Monitor {
+message MemberMonitor {
   enum Op {
     GREATER_EQUAL = 0;
   }
 
-  enum Metric {
+  enum Type {
     PROGRESS = 0;
   }
 
-  Metric metric = 0;
-  Op op = 1;
-  uint64 threshold = 2;
-  uint64 delay = 3;
+  Type type = 1;
+  Op op = 2;
+  uint64 threshold = 3;
+  uint32 delay = 4;
 }
 
-message PromoteRule {
-  enum TargetRole {
-    VOTER = 0;
-  }
-
-  TargetRole promoteTo = 0;
-  repeated Monitor monitors = 1;
+message MemberPromoteRule {
+  bool auto = 1;
+  repeated MemberMonitor monitors = 2;
 }
+
 
 message Member {
   // ID is the member ID for this member.
@@ -896,11 +893,8 @@ message Member {
   repeated string clientURLs = 4;
   // isLearner indicates if the member is raft learner.
   bool isLearner = 5;
-  // autoPromote indicates whether the learner should be automatically promoted to a node
-  // when it has caught up with the leader
-  bool autoPromote = 6;
   // promoteRules govern the automatic promotion of learner members.
-  repeated PromoteRule promoteRules = 7;
+  repeated MemberPromoteRule promoteRules = 6;
 }
 
 message MemberAddRequest {
@@ -908,11 +902,8 @@ message MemberAddRequest {
   repeated string peerURLs = 1;
   // isLearner indicates if the added member is raft learner.
   bool isLearner = 2;
-  // autoPromote indicates whether the added learner should be automatically promoted to a node
-  // when it has caught up with the leader
-  bool autoPromote = 3;
   // promoteRules govern the automatic promotion of learner members.
-  repeated PromoteRule promoteRules = 4;
+  repeated MemberPromoteRule promoteRules = 3;
 }
 
 message MemberAddResponse {
@@ -1064,9 +1055,6 @@ message StatusResponse {
   int64 dbSizeInUse = 9;
   // isLearner indicates if the member is raft learner.
   bool isLearner = 10;
-  // autoPromote indicates if learner is configured to be automatically promoted
-  // to a node upon catching up with the leader.
-  bool autoPromote = 11;
 }
 
 message AuthEnableRequest {

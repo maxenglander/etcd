@@ -32,15 +32,15 @@ type RaftAttributes struct {
 	PeerURLs []string `json:"peerURLs"`
 	// IsLearner indicates if the member is raft learner.
 	IsLearner bool `json:"isLearner,omitempty"`
-	// AutoPromote indicates whether the learner should be
-	// promoted to a voter upon catching up with leader.
-	AutoPromote bool `json:"autoPromote,omitempty"`
 }
 
 // Attributes represents all the non-raft related attributes of an etcd member.
 type Attributes struct {
 	Name       string   `json:"name,omitempty"`
 	ClientURLs []string `json:"clientURLs,omitempty"`
+	// PromoteRules govern if and when a raft member
+	// may be automatically promoted.
+	PromoteRules []PromoteRule `json:"promoteRules"`
 }
 
 type Member struct {
@@ -49,34 +49,85 @@ type Member struct {
 	Attributes
 }
 
-// NewMemberAsNode creates a node Member without an ID and generates one based on the
-// cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
-func NewMemberAsNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, false /* isLearner */, false /* autoPromote */)
+type MonitorType string
+
+const (
+	Progress MonitorType = "progress"
+)
+
+type MonitorOp string
+
+const (
+	GreaterEqual MonitorOp = "greater-equal"
+)
+
+type monitorStatus uint8
+
+const (
+	// Monitor value meets the threshold for at least as long as the delay.
+	inactive monitorStatus = iota
+	// Monitor value meets the threshold, but delay has not yet elapsed.
+	activeWait
+	// Monitor value does not meet the threshold.
+	active
+)
+
+type Monitor struct {
+	Type            MonitorType   `json:"type"`
+	Op              MonitorOp     `json:"op"`
+	Threshold       uint64        `json:"threshold"`
+	Delay           uint32        `json:"delay"`
+	status          monitorStatus `json:"-"`
+	statusChangedAt time.Time     `json:"-"`
+	value           uint64        `json:"-"`
 }
 
-// NewMemberAsAutoPromotingNode creates a learner Member without an ID and generates one
-// based on the cluster name, peer URLs, and time. This is used for bootstrapping/adding
-// new member. Auto-promoting learner members are automatically promoted to nodes upon
-// catching up with the master.
-func NewMemberAsAutoPromotingNode(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, true /* autoPromote */)
+type PromoteRule struct {
+	Auto     bool      `json:"auto"`
+	Monitors []Monitor `json:"monitors"`
+}
+
+// NewMember creates a node Member without an ID and generates one based on the
+// cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
+func NewMember(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
+	return newMember(name, peerURLs, clusterName, now, false /* isLearner */, nil)
+}
+
+// NewMemberAsLearnerWithPromoteRules creates a learner Member without an ID and generates
+// one based on the cluster name, peer URLs, and time. This is used for bootstrapping/adding
+// new member. Promote rules govern whether a learner may be manually or
+// automatically promoted.
+func NewMemberAsLearnerWithPromoteRules(name string, peerURLs types.URLs, promoteRules []PromoteRule, clusterName string, now *time.Time) *Member {
+	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, promoteRules)
 }
 
 // NewMemberAsLearner creates a learner Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for adding new learner member.
 func NewMemberAsLearner(name string, peerURLs types.URLs, clusterName string, now *time.Time) *Member {
-	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, false /* autoPromote */)
+	rule := PromoteRule{
+		Auto: false,
+		Monitors: []Monitor{
+			{
+				Delay:     0,
+				Op:        GreaterEqual,
+				Type:      Progress,
+				Threshold: 90,
+			},
+		},
+	}
+	return newMember(name, peerURLs, clusterName, now, true /* isLearner */, []PromoteRule{rule})
 }
 
-func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, isLearner bool, autoPromote bool) *Member {
+func newMember(name string, peerURLs types.URLs, clusterName string, now *time.Time, isLearner bool, promoteRules []PromoteRule) *Member {
 	m := &Member{
 		RaftAttributes: RaftAttributes{
-			PeerURLs:    peerURLs.StringSlice(),
-			IsLearner:   isLearner,
-			AutoPromote: autoPromote,
+			PeerURLs:  peerURLs.StringSlice(),
+			IsLearner: isLearner,
 		},
-		Attributes: Attributes{Name: name},
+		Attributes: Attributes{
+			Name:         name,
+			PromoteRules: promoteRules,
+		},
 	}
 
 	var b []byte
@@ -111,8 +162,7 @@ func (m *Member) Clone() *Member {
 	mm := &Member{
 		ID: m.ID,
 		RaftAttributes: RaftAttributes{
-			IsLearner:   m.IsLearner,
-			AutoPromote: m.AutoPromote,
+			IsLearner: m.IsLearner,
 		},
 		Attributes: Attributes{
 			Name: m.Name,
@@ -126,11 +176,111 @@ func (m *Member) Clone() *Member {
 		mm.ClientURLs = make([]string, len(m.ClientURLs))
 		copy(mm.ClientURLs, m.ClientURLs)
 	}
+	if m.PromoteRules != nil {
+		mm.PromoteRules = make([]PromoteRule, len(m.PromoteRules))
+		for ridx, rule := range m.PromoteRules {
+			mm.PromoteRules[ridx] = PromoteRule{
+				Auto:     m.PromoteRules[ridx].Auto,
+				Monitors: make([]Monitor, len(rule.Monitors)),
+			}
+			for midx, monitor := range rule.Monitors {
+				mm.PromoteRules[ridx].Monitors[midx] = Monitor{
+					Op:        monitor.Op,
+					Type:      monitor.Type,
+					Threshold: monitor.Threshold,
+					Delay:     monitor.Delay,
+				}
+			}
+		}
+	}
 	return mm
+}
+
+func (m *Member) CanPromote() (bool, error) {
+	if len(m.PromoteRules) == 0 {
+		return false, ErrNoPromoteRules
+	}
+	var errors []error
+	for _, rule := range m.PromoteRules {
+		if satisfied, reason := rule.IsSatisfied(); !satisfied {
+			errors = append(errors, reason)
+		}
+		return true, nil
+	}
+	// TODO: combine errors
+	return false, errors[0]
 }
 
 func (m *Member) IsStarted() bool {
 	return len(m.Name) != 0
+}
+
+// Add a value to the monitor's history of values. Update monitor status.
+func (m *Monitor) AddValue(value uint64) {
+	// Set some values that will be used to calculate new monitor status.
+	meetsThreshold := false
+	now := time.Now()
+	var elapsed uint64 = 0
+	if !m.statusChangedAt.IsZero() {
+		elapsed = uint64(now.Sub(m.statusChangedAt).Seconds() * 1e3)
+	}
+
+	// Determine whether the value meets the threshold.
+	switch m.Op {
+	case GreaterEqual:
+		meetsThreshold = value >= m.Threshold
+		break
+	}
+
+	newStatus := m.status
+	// Update monitor status according to the following truth table
+	//
+	// meetsThreshold && m.status && m.delay && elapsed => newStatus
+	// ============================================================
+	// true            | *         | 0        | *        | active
+	// true            | !inactive | > 0      | >= delay | active
+	// true            | inactive  | > 0      | *        | activeWait
+	// false           | *         | *        | *        | inactive
+	//
+	// For all other possibilities, keep current status.
+	if meetsThreshold && m.Delay == 0 {
+		newStatus = active
+	} else if meetsThreshold && m.status != inactive && m.Delay > 0 && elapsed >= uint64(m.Delay) {
+		newStatus = active
+	} else if meetsThreshold && m.status == inactive && m.Delay > 0 {
+		newStatus = activeWait
+	} else if !meetsThreshold {
+		newStatus = inactive
+	}
+
+	// If status has changed, record the change and update time of last change.
+	if newStatus != m.status {
+		m.status = newStatus
+		m.statusChangedAt = now
+	}
+}
+
+func (m *Monitor) IsActive() bool {
+	return m.status == active
+}
+
+func (r *PromoteRule) IsSatisfied() (bool, error) {
+	if len(r.Monitors) == 0 {
+		return false, ErrNoMonitors
+	}
+	for _, monitor := range r.Monitors {
+		if !monitor.IsActive() {
+			switch monitor.Type {
+			case Progress:
+				switch monitor.Op {
+				case GreaterEqual:
+					return false, ErrLearnerNotReady
+				}
+			}
+			return false, ErrInactiveMonitor
+		}
+	}
+	return true, nil
 }
 
 // MembersByID implements sort by ID interface

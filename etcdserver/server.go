@@ -485,8 +485,12 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				storage:     NewStorage(w, ss),
 			},
 		),
-		id:               id,
-		attributes:       membership.Attributes{Name: cfg.Name, ClientURLs: cfg.ClientURLs.StringSlice()},
+		id: id,
+		attributes: membership.Attributes{
+			Name:         cfg.Name,
+			ClientURLs:   cfg.ClientURLs.StringSlice(),
+			PromoteRules: make([]membership.PromoteRule, 0),
+		},
 		cluster:          cl,
 		stats:            sstats,
 		lstats:           lstats,
@@ -606,25 +610,80 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	return srv, nil
 }
 
-// Get auto-promoting learner nodes that ahve caught up with leader.
-func (s *EtcdServer) getNextReadyAutoPromotingNodes() ([]uint64, error) {
-	var readyAutoPromotingNodes []uint64
+// Evaluate promote rules of all members.
+func (s *EtcdServer) evaluateAllMembersPromoteRules() error {
 	rs := s.raftStatus()
-
-	// leader's raftStatus.Progress is not nil
 	if rs.Progress == nil {
-		return nil, fmt.Errorf("this server is not the leader")
+		return ErrNotLeader
 	}
+	for _, member := range s.cluster.Members() {
+		// Ignore this member.
+		if s.id == member.ID {
+			continue
+		}
+		// Evaluate member.
+		s.evaluateMemberPromoteRules(member.ID)
+	}
+	return nil
+}
 
-	for memberID, progress := range rs.Progress {
-		if progress.IsLearner && progress.AutoPromote {
-			if err := s.isLearnerReady(memberID); err == nil {
-				readyAutoPromotingNodes = append(readyAutoPromotingNodes, memberID)
+// Evaluate promote rules of a single member.
+func (s *EtcdServer) evaluateMemberPromoteRules(id types.ID) error {
+	rs := s.raftStatus()
+	if rs.Progress == nil {
+		return ErrNotLeader
+	}
+	if !s.cluster.IsMemberExist(id) {
+		return membership.ErrIDNotFound
+	}
+	member := s.cluster.Member(id)
+	memberID := uint64(member.ID)
+	// If a single promotion rule is satisifed, the member is eligible for
+	// promotion.
+	for _, rule := range member.PromoteRules {
+		// Update monitor values.
+		for _, monitor := range rule.Monitors {
+			switch monitor.Type {
+			case membership.Progress:
+				if matchPercent, err := s.getLearnerMatchPercent(memberID); err != nil {
+					monitor.AddValue(uint64(matchPercent * 100.0))
+				}
+				break
 			}
 		}
 	}
+	return nil
+}
 
-	return readyAutoPromotingNodes, nil
+// Get members that may be automatically promoted according to their promotion
+// rules.
+func (s *EtcdServer) getAutoPromotableMembers() ([]uint64, error) {
+	// leader's raftStatus.Progress is not nil
+	rs := s.raftStatus()
+	if rs.Progress == nil {
+		return nil, ErrNotLeader
+	}
+	// Build a list of promotable member IDs.
+	var promotable []uint64
+	for _, member := range s.cluster.Members() {
+		// Ignore this member.
+		if s.id == member.ID {
+			continue
+		}
+		memberID := uint64(member.ID)
+		// If a single promotion rule is satisifed, the member is eligible for
+		// promotion.
+		for _, rule := range member.PromoteRules {
+			if !rule.Auto {
+				continue
+			}
+			if satisfied, _ := rule.IsSatisfied(); satisfied {
+				promotable = append(promotable, memberID)
+				break
+			}
+		}
+	}
+	return promotable, nil
 }
 
 func (s *EtcdServer) getLogger() *zap.Logger {
@@ -993,10 +1052,11 @@ func (s *EtcdServer) run() {
 
 	for {
 		if pmSched.Pending()+pmSched.Scheduled() < 1 {
-			if pmIDs, err := s.getNextReadyAutoPromotingNodes(); err == nil {
-				for _, pmID := range pmIDs {
+			s.evaluateAllMembersPromoteRules()
+			if promotable, err := s.getAutoPromotableMembers(); err == nil {
+				for _, pmID := range promotable {
 					f := func(c context.Context) {
-						s.autoPromoteMember(c, pmID)
+						s.PromoteMember(c, pmID)
 					}
 					pmSched.Schedule(f)
 				}
@@ -1426,9 +1486,6 @@ func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*
 
 	if memb.IsLearner {
 		cc.Type = raftpb.ConfChangeAddLearnerNode
-		if memb.AutoPromote {
-			cc.Type = raftpb.ConfChangeAddAutoPromotingNode
-		}
 	}
 
 	return s.configure(ctx, cc)
@@ -1481,16 +1538,18 @@ func (s *EtcdServer) RemoveMember(ctx context.Context, id uint64) ([]*membership
 	return s.configure(ctx, cc)
 }
 
-// PromoteMember promotes a learner node to a voting node.
+// PromoteMember promotes a non-voting member to a voting node.
 func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
-	// only raft leader has information on whether the to-be-promoted learner node is ready. If promoteMember call
+	// only raft leader has information on whether the to-be-promoted member node is ready. If promoteMember call
 	// fails with ErrNotLeader, forward the request to leader node via HTTP. If promoteMember call fails with error
 	// other than ErrNotLeader, return the error.
 	resp, err := s.promoteMember(ctx, id)
+
 	if err == nil {
 		learnerPromoteSucceed.Inc()
 		return resp, nil
 	}
+
 	if err != ErrNotLeader {
 		learnerPromoteFailed.WithLabelValues(err.Error()).Inc()
 		return resp, err
@@ -1510,7 +1569,7 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 				return resp, nil
 			}
 			// If member promotion failed, return early. Otherwise keep retry.
-			if err == ErrLearnerNotReady || err == membership.ErrIDNotFound || err == membership.ErrMemberNotLearner {
+			if err == ErrCannotPromote || err == ErrLearnerNotReady || err == membership.ErrIDNotFound || err == membership.ErrMemberNotLearner {
 				return nil, err
 			}
 		}
@@ -1522,13 +1581,9 @@ func (s *EtcdServer) PromoteMember(ctx context.Context, id uint64) ([]*membershi
 	return nil, ErrCanceled
 }
 
-func (s *EtcdServer) autoPromoteMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
-	members, err := s.PromoteMember(ctx, id)
-	return members, err
-}
-
-// promoteMember checks whether the to-be-promoted learner node is ready before sending the promote
+// promoteMember checks whether the to-be-promoted member node is ready before sending the promote
 // request to raft.
+//
 // The function returns ErrNotLeader if the local node is not raft leader (therefore does not have
 // enough information to determine if the learner node is ready), returns ErrLearnerNotReady if the
 // local node is leader (therefore has enough information) but decided the learner node is not ready
@@ -1538,12 +1593,12 @@ func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membershi
 		return nil, err
 	}
 
-	// check if we can promote this learner.
+	// check if we can promote this member.
 	if err := s.mayPromoteMember(types.ID(id)); err != nil {
 		return nil, err
 	}
 
-	// build the context for the promote confChange. mark IsLearner to false and IsPromote to true.
+	// build the context for the promote confChange. mark IsPromote to true.
 	promoteChangeContext := membership.ConfigChangeContext{
 		Member: membership.Member{
 			ID: types.ID(id),
@@ -1567,9 +1622,19 @@ func (s *EtcdServer) promoteMember(ctx context.Context, id uint64) ([]*membershi
 
 func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 	lg := s.getLogger()
-	err := s.isLearnerReady(uint64(id))
-	if err != nil {
-		return err
+
+	memberID := types.ID(id)
+	if !s.cluster.IsMemberExist(memberID) {
+		return membership.ErrIDNotFound
+	}
+
+	member := s.cluster.Member(memberID)
+
+	if canPromote, reason := member.CanPromote(); !canPromote {
+		if reason == membership.ErrLearnerNotReady {
+			return ErrLearnerNotReady
+		}
+		return reason
 	}
 
 	if !s.Cfg.StrictReconfigCheck {
@@ -1588,15 +1653,15 @@ func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 	return nil
 }
 
-// check whether the learner catches up with leader or not.
+// Get learner progress.
 // Note: it will return nil if member is not found in cluster or if member is not learner.
 // These two conditions will be checked before apply phase later.
-func (s *EtcdServer) isLearnerReady(id uint64) error {
+func (s *EtcdServer) getLearnerMatchPercent(id uint64) (float64, error) {
 	rs := s.raftStatus()
 
 	// leader's raftStatus.Progress is not nil
 	if rs.Progress == nil {
-		return ErrNotLeader
+		return 0, ErrNotLeader
 	}
 
 	var learnerMatch uint64
@@ -1611,15 +1676,16 @@ func (s *EtcdServer) isLearnerReady(id uint64) error {
 		}
 	}
 
-	if isFound {
-		leaderMatch := rs.Progress[leaderID].Match
-		// the learner's Match not caught up with leader yet
-		if float64(learnerMatch) < float64(leaderMatch)*readyPercent {
-			return ErrLearnerNotReady
-		}
+	if !isFound {
+		return 0, membership.ErrIDNotFound
 	}
 
-	return nil
+	leaderMatch := rs.Progress[leaderID].Match
+	return float64(learnerMatch) / float64(leaderMatch), nil
+}
+
+func (s *EtcdServer) isLearner(id types.ID) bool {
+	return s.cluster.IsMemberExist(id) && s.cluster.Member(id).IsLearner
 }
 
 func (s *EtcdServer) mayRemoveMember(id types.ID) error {
@@ -1628,9 +1694,8 @@ func (s *EtcdServer) mayRemoveMember(id types.ID) error {
 	}
 
 	lg := s.getLogger()
-	isLearner := s.cluster.IsMemberExist(id) && s.cluster.Member(id).IsLearner
 	// no need to check quorum when removing non-voting member
-	if isLearner {
+	if s.isLearner(id) {
 		return nil
 	}
 
@@ -1813,8 +1878,9 @@ func (s *EtcdServer) publishV3(timeout time.Duration) {
 	req := &membershippb.ClusterMemberAttrSetRequest{
 		Member_ID: uint64(s.id),
 		MemberAttributes: &membershippb.Attributes{
-			Name:       s.attributes.Name,
-			ClientUrls: s.attributes.ClientURLs,
+			Name:         s.attributes.Name,
+			ClientUrls:   s.attributes.ClientURLs,
+			PromoteRules: promoteRulesToProtoPromoteRules(s.attributes.PromoteRules),
 		},
 	}
 	lg := s.getLogger()
@@ -2104,7 +2170,7 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 	lg := s.getLogger()
 	*confState = *s.r.ApplyConfChange(cc)
 	switch cc.Type {
-	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(membership.ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			lg.Panic("failed to unmarshal member", zap.Error(err))
@@ -2128,7 +2194,7 @@ func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.Con
 
 		// update the isLearner metric when this server id is equal to the id in raft member confChange
 		if confChangeContext.Member.ID == s.id {
-			if cc.Type == raftpb.ConfChangeAddLearnerNode || cc.Type == raftpb.ConfChangeAddAutoPromotingNode {
+			if cc.Type == raftpb.ConfChangeAddLearnerNode {
 				isLearner.Set(1)
 			} else {
 				isLearner.Set(0)

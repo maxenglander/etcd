@@ -40,7 +40,7 @@ func ExampleCluster_memberList() {
 	// Output: members: 3
 }
 
-func ExampleCluster_memberAddAsNode() {
+func ExampleCluster_memberAdd() {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints[:2],
 		DialTimeout: dialTimeout,
@@ -80,7 +80,7 @@ func ExampleCluster_memberAddAsLearner() {
 	// added member.IsLearner: true
 }
 
-func ExampleCluster_memberAddAsAutoPromoting() {
+func ExampleCluster_memberAddAsLearnerWithPromoteRules() {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints[:2],
 		DialTimeout: dialTimeout,
@@ -91,7 +91,8 @@ func ExampleCluster_memberAddAsAutoPromoting() {
 	defer cli.Close()
 
 	peerURLs := endpoints[2:]
-	mresp, err := cli.MemberAddAsAutoPromotingNode(context.Background(), peerURLs)
+	promoteRules := []clientv3.MemberPromoteRule{}
+	mresp, err := cli.MemberAddAsLearnerWithPromoteRules(context.Background(), peerURLs, promoteRules)
 	if err != nil {
 		log.Fatal(err)
 	}

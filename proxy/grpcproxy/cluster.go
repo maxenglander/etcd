@@ -116,10 +116,11 @@ func (cp *clusterProxy) monitor(wa gnaming.Watcher) {
 
 func (cp *clusterProxy) MemberAdd(ctx context.Context, r *pb.MemberAddRequest) (*pb.MemberAddResponse, error) {
 	if r.IsLearner {
-		if r.AutoPromote {
-			return cp.memberAddAsAutoPromotingNode(ctx, r.PeerURLs)
+		if len(r.PromoteRules) > 0 {
+			return cp.memberAddAsAutoPromotingLearner(ctx, r.PeerURLs, r.PromoteRules)
+		} else {
+			return cp.memberAddAsLearner(ctx, r.PeerURLs)
 		}
-		return cp.memberAddAsLearner(ctx, r.PeerURLs)
 	}
 	return cp.memberAddAsNode(ctx, r.PeerURLs)
 }
@@ -133,8 +134,12 @@ func (cp *clusterProxy) memberAddAsNode(ctx context.Context, peerURLs []string) 
 	return &resp, err
 }
 
-func (cp *clusterProxy) memberAddAsAutoPromotingNode(ctx context.Context, peerURLs []string) (*pb.MemberAddResponse, error) {
-	mresp, err := cp.clus.MemberAddAsAutoPromotingNode(ctx, peerURLs)
+func (cp *clusterProxy) memberAddAsAutoPromotingLearner(ctx context.Context, peerURLs []string, promoteRules []*pb.MemberPromoteRule) (*pb.MemberAddResponse, error) {
+	var cv3PromoteRules = make([]clientv3.MemberPromoteRule, len(promoteRules))
+	for i, promoteRule := range promoteRules {
+		cv3PromoteRules[i] = (clientv3.MemberPromoteRule)(*promoteRule)
+	}
+	mresp, err := cp.clus.MemberAddAsLearnerWithPromoteRules(ctx, peerURLs, cv3PromoteRules)
 	if err != nil {
 		return nil, err
 	}

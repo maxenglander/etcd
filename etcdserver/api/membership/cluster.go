@@ -74,8 +74,8 @@ type DowngradeInfo struct {
 // ConfigChangeContext represents a context for confChange.
 type ConfigChangeContext struct {
 	Member
-	// IsPromote indicates if the config change is for promoting a learner member.
-	// This flag is needed because both adding a new member and promoting a learner member
+	// IsPromote indicates if the config change is for promoting a member to another role.
+	// This flag is needed because both adding a new member and promoting a member
 	// uses the same config change type 'ConfChangeAddNode'.
 	IsPromote bool `json:"isPromote"`
 }
@@ -85,7 +85,7 @@ type ConfigChangeContext struct {
 func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) (*RaftCluster, error) {
 	c := NewCluster(lg, token)
 	for name, urls := range urlsmap {
-		m := NewMemberAsNode(name, urls, token, nil)
+		m := NewMember(name, urls, token, nil)
 		if _, ok := c.members[m.ID]; ok {
 			return nil, fmt.Errorf("member exists with identical ID %v", m)
 		}
@@ -292,7 +292,7 @@ func (c *RaftCluster) ValidateConfigurationChange(cc raftpb.ConfChange) error {
 		return ErrIDRemoved
 	}
 	switch cc.Type {
-	case raftpb.ConfChangeAddAutoPromotingNode, raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
+	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
 		confChangeContext := new(ConfigChangeContext)
 		if err := json.Unmarshal(cc.Context, confChangeContext); err != nil {
 			c.lg.Panic("failed to unmarshal confChangeContext", zap.Error(err))
@@ -465,7 +465,7 @@ func (c *RaftCluster) PromoteMember(id types.ID) {
 	defer c.Unlock()
 
 	c.members[id].RaftAttributes.IsLearner = false
-	c.members[id].RaftAttributes.AutoPromote = false
+
 	if c.v2store != nil {
 		mustUpdateMemberInStore(c.lg, c.v2store, c.members[id])
 	}

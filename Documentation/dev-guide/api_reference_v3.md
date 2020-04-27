@@ -36,7 +36,7 @@ This is a generated documentation. Please read the proto files for more.
 | MemberRemove | MemberRemoveRequest | MemberRemoveResponse | MemberRemove removes an existing member from the cluster. |
 | MemberUpdate | MemberUpdateRequest | MemberUpdateResponse | MemberUpdate updates the member configuration. |
 | MemberList | MemberListRequest | MemberListResponse | MemberList lists all the members in the cluster. |
-| MemberPromote | MemberPromoteRequest | MemberPromoteResponse | MemberPromote promotes a member from raft learner (non-voting) to raft voting member. |
+| MemberPromote | MemberPromoteRequest | MemberPromoteResponse | MemberPromote promotes a member from raft non-voting member to raft voting member. |
 
 
 
@@ -646,7 +646,7 @@ Empty field.
 | peerURLs | peerURLs is the list of URLs the member exposes to the cluster for communication. | (slice of) string |
 | clientURLs | clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty. | (slice of) string |
 | isLearner | isLearner indicates if the member is raft learner. | bool |
-| autoPromote | autoPromote indicates whether the learner should be automatically promoted to a node when it has caught up with the leader | bool |
+| promoteRules | promoteRules govern the automatic promotion of learner members. | (slice of) MemberPromoteRule |
 
 
 
@@ -656,7 +656,7 @@ Empty field.
 | ----- | ----------- | ---- |
 | peerURLs | peerURLs is the list of URLs the added member will use to communicate with the cluster. | (slice of) string |
 | isLearner | isLearner indicates if the added member is raft learner. | bool |
-| autoPromote | autoPromote indicates whether the added learner should be automatically promoted to a node when it has caught up with the leader | bool |
+| promoteRules | promoteRules govern the automatic promotion of learner members. | (slice of) MemberPromoteRule |
 
 
 
@@ -687,6 +687,17 @@ Empty field.
 
 
 
+##### message `MemberMonitor` (etcdserver/etcdserverpb/rpc.proto)
+
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| type |  | Type |
+| op |  | Op |
+| threshold |  | uint64 |
+| delay |  | uint32 |
+
+
+
 ##### message `MemberPromoteRequest` (etcdserver/etcdserverpb/rpc.proto)
 
 | Field | Description | Type |
@@ -701,6 +712,15 @@ Empty field.
 | ----- | ----------- | ---- |
 | header |  | ResponseHeader |
 | members | members is a list of all members after promoting the member. | (slice of) Member |
+
+
+
+##### message `MemberPromoteRule` (etcdserver/etcdserverpb/rpc.proto)
+
+| Field | Description | Type |
+| ----- | ----------- | ---- |
+| auto |  | bool |
+| monitors |  | (slice of) MemberMonitor |
 
 
 
@@ -879,7 +899,6 @@ Empty field.
 | errors | errors contains alarm/health information and status. | (slice of) string |
 | dbSizeInUse | dbSizeInUse is the size of the backend database logically in use, in bytes, of the responding member. | int64 |
 | isLearner | isLearner indicates if the member is raft learner. | bool |
-| autoPromote | autoPromote indicates if learner is configured to be automatically promoted to a node upon catching up with the leader. | bool |
 
 
 
