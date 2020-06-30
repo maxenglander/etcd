@@ -55,6 +55,8 @@
 		LeaseLeasesRequest
 		LeaseStatus
 		LeaseLeasesResponse
+		MemberMonitor
+		MemberPromoteRule
 		Member
 		MemberAddRequest
 		MemberAddResponse

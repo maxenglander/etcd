@@ -22,6 +22,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"go.etcd.io/etcd/v3/etcdserver/api/membership"
+	membershippb "go.etcd.io/etcd/v3/etcdserver/api/membership/membershippb"
 	"go.etcd.io/etcd/v3/etcdserver/api/rafthttp"
 	pb "go.etcd.io/etcd/v3/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/v3/pkg/types"
@@ -188,4 +189,60 @@ func (n panicAlternativeStringer) String() (s string) {
 	}()
 	s = n.stringer.String()
 	return s
+}
+
+func promoteRulesToProtoPromoteRules(promoteRules []membership.PromoteRule) []*membershippb.MemberPromoteRule {
+	rules := make([]*membershippb.MemberPromoteRule, len(promoteRules))
+	for idx, rule := range promoteRules {
+		monitors := make([]*membershippb.MemberMonitor, len(rule.Monitors))
+		for idx, monitor := range rule.Monitors {
+			monitors[idx] = &membershippb.MemberMonitor{
+				Delay:     monitor.Delay,
+				Threshold: monitor.Threshold,
+			}
+			switch monitor.Op {
+			case membership.GreaterEqual:
+				monitors[idx].Op = membershippb.MemberMonitor_GREATER_EQUAL
+				break
+			}
+			switch monitor.Type {
+			case membership.Progress:
+				monitors[idx].Type = membershippb.MemberMonitor_PROGRESS
+				break
+			}
+		}
+		rules[idx] = &membershippb.MemberPromoteRule{
+			Auto:     rule.Auto,
+			Monitors: monitors,
+		}
+	}
+	return rules
+}
+
+func protoPromoteRulesToPromoteRules(promoteRules []*membershippb.MemberPromoteRule) []membership.PromoteRule {
+	rules := make([]membership.PromoteRule, len(promoteRules))
+	for idx, rule := range promoteRules {
+		monitors := make([]membership.Monitor, len(rule.Monitors))
+		for idx, monitor := range rule.Monitors {
+			monitors[idx] = membership.Monitor{
+				Delay:     monitor.Delay,
+				Threshold: monitor.Threshold,
+			}
+			switch monitor.Op {
+			case membershippb.MemberMonitor_GREATER_EQUAL:
+				monitors[idx].Op = membership.GreaterEqual
+				break
+			}
+			switch monitor.Type {
+			case membershippb.MemberMonitor_PROGRESS:
+				monitors[idx].Type = membership.Progress
+				break
+			}
+		}
+		rules[idx] = membership.PromoteRule{
+			Auto:     rule.Auto,
+			Monitors: monitors,
+		}
+	}
+	return rules
 }
